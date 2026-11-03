@@ -1,6 +1,9 @@
 import { useRef, useState } from 'react';
 import Icon from '../components/Icon.jsx';
-import { FIELD_GROUPS, FIELD_TYPES, newField, isDisplay } from '@shared/fields.js';
+import { FIELD_TYPES, newField, newWidget, typeLabel, isDisplay } from '@shared/fields.js';
+import { widgetKind } from '@shared/widgets.js';
+import Palette from '../components/Palette.jsx';
+import { WidgetProps, ExtraProps } from '../components/WidgetProps.jsx';
 import { FieldInput, DisplayBlock } from '../components/Fields.jsx';
 import { themeStyle } from '../components/FormRenderer.jsx';
 
@@ -36,19 +39,21 @@ function FieldProps({ f, set, def }) {
   return (
     <div>
       <div className="props-head">
-        <div><div className="hint">{FIELD_TYPES[f.type].label}</div><div style={{ fontWeight: 600, fontSize: 15 }}>{f.label || 'Untitled'}</div></div>
+        <div><div className="hint">{typeLabel(f)}</div><div style={{ fontWeight: 600, fontSize: 15 }}>{f.label || 'Untitled'}</div></div>
         <code title="Field ID — use in formulas and email templates as {id}">id: {f.id}</code>
       </div>
       <label className="lbl">{f.type === 'heading' ? 'Heading text' : 'Label'}</label>
       {inp('label')}
       {!display && f.type !== 'hidden' && (
         <>
-          {f.type !== 'calculation' && chk('required', 'Required')}
+          {f.type !== 'calculation' && widgetKind(f) !== 'calc' && chk('required', 'Required')}
           {chk('hiddenByDefault', 'Hidden by default (show with conditions)')}
           <label className="lbl">Description / help text</label>
           {inp('description')}
         </>
       )}
+      {f.type === 'widget' && <WidgetProps f={f} set={set} def={def} />}
+      <ExtraProps f={f} set={set} />
       {f.type === 'heading' && (<><label className="lbl">Subheading</label>{inp('subheading')}</>)}
       {f.type === 'paragraph' && (<><label className="lbl">Text</label><textarea rows={6} value={f.text} onChange={(e) => set({ text: e.target.value })} /></>)}
       {f.type === 'image' && (<><label className="lbl">Image URL</label>{inp('src')}<label className="lbl">Alt text</label>{inp('alt')}<label className="lbl">Width (%)</label>{inp('width', 'number')}</>)}
@@ -206,18 +211,21 @@ function logicTag(def, id) {
 export default function Builder({ def, update, plan }) {
   const [selected, setSelected] = useState(null);
   const [dropAt, setDropAt] = useState(null);
-  const [find, setFind] = useState('');
   const searchRef = useRef(null);
   const fields = def.fields;
   const sel = fields.find((f) => f.id === selected);
   const limit = plan.fieldsPerForm;
 
-  const insert = (type, index = fields.length) => {
+  const [propTab, setPropTab] = useState('general');
+  const addField = (f, index = sel ? fields.indexOf(sel) + 1 : fields.length) => {
+    if (!f) return;
     if (limit != null && fields.length >= limit) return alert(`Your ${plan.name} plan allows ${limit} fields per form.`);
-    const f = newField(type);
     update((d) => { const n = [...d.fields]; n.splice(index, 0, f); return { ...d, fields: n }; });
     setSelected(f.id);
+    setPropTab('general');
   };
+  const insert = (type, index) => addField(newField(type), index);
+  const insertWidget = (key, index) => addField(newWidget(key), index);
   const move = (id, index) => update((d) => {
     const from = d.fields.findIndex((f) => f.id === id);
     const n = [...d.fields];
@@ -246,6 +254,7 @@ export default function Builder({ def, update, plan }) {
     const at = dropAt ?? fields.length;
     setDropAt(null);
     if (data.startsWith('new:')) insert(data.slice(4), at);
+    if (data.startsWith('widget:')) insertWidget(data.slice(7), at);
     if (data.startsWith('move:')) move(data.slice(5), at);
   };
   const overField = (e, i) => {
@@ -256,30 +265,7 @@ export default function Builder({ def, update, plan }) {
 
   return (
     <div className="builder">
-      <aside className="palette" aria-label="Add fields">
-        <label className="search" style={{ minHeight: 38 }}>
-          <Icon name="search" size={15} />
-          <span className="sr-only">Search fields</span>
-          <input ref={searchRef} type="search" placeholder="Search fields" value={find} onChange={(e) => setFind(e.target.value)} />
-        </label>
-        {FIELD_GROUPS.map((g) => {
-          const types = g.types.filter((t) => FIELD_TYPES[t].label.toLowerCase().includes(find.trim().toLowerCase()));
-          if (!types.length) return null;
-          return (
-            <div key={g.name}>
-              <h4>{g.name}</h4>
-              <div className="palette-grid">
-                {types.map((t) => (
-                  <button key={t} className="item" draggable onDragStart={(e) => e.dataTransfer.setData('text/plain', `new:${t}`)} onClick={() => insert(t, sel ? fields.indexOf(sel) + 1 : fields.length)} title={`Add ${FIELD_TYPES[t].label}`}>
-                    <span className="ico" aria-hidden="true">{FIELD_TYPES[t].icon}</span>{FIELD_TYPES[t].label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          );
-        })}
-        <p className="hint" style={{ margin: 0 }}>Drag fields onto the form, or click to add after the selected field.</p>
-      </aside>
+      <Palette ref={searchRef} def={def} update={update} onAddType={(t) => insert(t)} onAddWidget={(k) => insertWidget(k)} />
 
       <div className="canvas" onDragOver={(e) => { e.preventDefault(); if (e.target === e.currentTarget) setDropAt(fields.length); }} onDrop={onDrop} onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setDropAt(null); }} onClick={(e) => { if (e.target === e.currentTarget) setSelected(null); }}>
         <div className="canvas-bar" style={themeStyle(def.theme)}>
@@ -309,7 +295,7 @@ export default function Builder({ def, update, plan }) {
                     onDragOver={(e) => overField(e, i)}
                     onClick={() => setSelected(f.id)}
                     onKeyDown={(e) => { if (e.key === 'Enter' && e.target === e.currentTarget) setSelected(f.id); }}
-                    tabIndex={0} role="button" aria-pressed={selected === f.id} aria-label={`${FIELD_TYPES[f.type].label}: ${f.label}`}
+                    tabIndex={0} role="button" aria-pressed={selected === f.id} aria-label={`${typeLabel(f)}: ${f.label}`}
                   >
                     <div className="tools">
                       <button title="Move up" aria-label="Move up" disabled={i === 0} onClick={(e) => { e.stopPropagation(); move(f.id, i - 1); }}><Icon name="up" size={14} /></button>
@@ -349,7 +335,18 @@ export default function Builder({ def, update, plan }) {
         {sel ? (
           <>
             <button className="small ghost" onClick={() => setSelected(null)} style={{ marginBottom: 12, paddingLeft: 0 }}><Icon name="back" size={14} />Form design</button>
-            <FieldProps f={sel} def={def} set={(patch) => setField(sel.id, patch)} />
+            <div className="seg" role="tablist" aria-label="Field settings" style={{ marginBottom: 12, display: 'flex' }}>
+              {[['general', 'General'], ['css', 'Custom CSS']].map(([k, l]) => <button key={k} role="tab" aria-selected={propTab === k} className={propTab === k ? 'on' : ''} style={{ flex: 1 }} onClick={() => setPropTab(k)}>{l}</button>)}
+            </div>
+            {propTab === 'general' ? <FieldProps f={sel} def={def} set={(patch) => setField(sel.id, patch)} /> : (
+              <div>
+                <label className="lbl" htmlFor="field-css">CSS for this field</label>
+                <textarea id="field-css" rows={10} value={sel.css || ''} onChange={(e) => setField(sel.id, { css: e.target.value })} placeholder={`#field-${sel.id} .wf-label {
+  color: #0f766e;
+}`} style={{ fontFamily: "'Geist Mono', monospace", fontSize: 13 }} />
+                <p className="hint">Target this field with <code>#field-{sel.id}</code>. Applies to the live form and preview.</p>
+              </div>
+            )}
             {logicTag(def, sel.id) && (
               <div className="panel" style={{ marginTop: 16, background: 'var(--accent-soft)', borderColor: 'var(--accent-line)', padding: 12 }}>
                 <div className="row" style={{ fontWeight: 500 }}><Icon name="logic" size={14} style={{ color: 'var(--accent)' }} />Logic</div>

@@ -9,7 +9,8 @@
     "build": "npm --prefix client run build",
     "start": "node server/index.js",
     "setup": "npm install && npm --prefix client install",
-    "test": "node --test server/test/*.test.js"
+    "test": "node --test server/test/*.test.js",
+    "seed:admin": "node server/seed-admin.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.3.0",

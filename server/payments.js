@@ -21,12 +21,16 @@ async function stripe(path, params, method = 'POST') {
 }
 
 export async function createCheckout({ items, currency, email, successUrl, cancelUrl, metadata = {} }) {
+  // Items with an interval (Subscription element) make this a subscription checkout; one-time items join the first invoice.
   const line_items = Object.fromEntries(items.map((i, n) => [n, {
     quantity: i.qty,
-    price_data: { currency: currency.toLowerCase(), unit_amount: Math.round(i.price * 100), product_data: { name: i.name } },
+    price_data: {
+      currency: currency.toLowerCase(), unit_amount: Math.round(i.price * 100), product_data: { name: i.name },
+      ...(i.interval ? { recurring: { interval: i.interval } } : {}),
+    },
   }]));
   return stripe('checkout/sessions', {
-    mode: 'payment', line_items, customer_email: email || undefined,
+    mode: items.some((i) => i.interval) ? 'subscription' : 'payment', line_items, customer_email: email || undefined,
     success_url: successUrl, cancel_url: cancelUrl, metadata,
   });
 }

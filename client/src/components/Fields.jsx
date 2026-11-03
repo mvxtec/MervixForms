@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api.js';
+import { WidgetInput, WidgetDisplay } from './Widgets.jsx';
 
 const today = () => new Date().toISOString().slice(0, 10);
 // Locale-aware price (₹1,499.00 for INR); falls back to "CUR 0.00" for unknown codes.
@@ -169,6 +170,68 @@ function Captcha({ value, onChange }) {
   );
 }
 
+function FillBlank({ f, value, onChange }) {
+  const obj = value || {};
+  const parts = String(f.text || '').split('{blank}');
+  return (
+    <div className="wg-fillblank">
+      {parts.map((t, i) => (
+        <span key={i}>
+          {t}
+          {i < parts.length - 1 && <input aria-label={`Blank ${i + 1}`} value={obj[i] || ''} onChange={(e) => onChange({ ...obj, [i]: e.target.value })} />}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function Spinner({ f, value, onChange }) {
+  const step = Number(f.step) || 1;
+  const n = value === '' || value == null ? Number(f.min) || 0 : Number(value);
+  const clamp = (x) => Math.min(f.max === '' || f.max == null ? Infinity : Number(f.max), Math.max(f.min === '' || f.min == null ? -Infinity : Number(f.min), x));
+  return (
+    <div className="wg-stepper">
+      <button type="button" aria-label="Decrease" onClick={() => onChange(clamp(n - step))}>−</button>
+      <input type="number" aria-label={f.label} value={value ?? ''} min={f.min} max={f.max} step={step} onChange={(e) => onChange(e.target.value === '' ? '' : Number(e.target.value))} />
+      <button type="button" aria-label="Increase" onClick={() => onChange(clamp(n + step))}>+</button>
+    </div>
+  );
+}
+
+function Donation({ f, value, onChange }) {
+  const v = value || {};
+  const amounts = (f.amounts || []).map(Number).filter((x) => x > 0);
+  const set = (amount) => onChange({ amount, currency: f.currency });
+  return (
+    <div className="stack">
+      <div className="wf-seg wrap" role="radiogroup" aria-label="Amount">
+        {amounts.map((a) => <button type="button" key={a} role="radio" aria-checked={Number(v.amount) === a} className={Number(v.amount) === a ? 'on' : ''} onClick={() => set(a)}>{money(a, f.currency)}</button>)}
+      </div>
+      {f.custom && (
+        <label style={{ display: 'block' }}>
+          <span className="wf-desc" style={{ display: 'block', margin: '0 0 4px' }}>Or enter an amount{f.minAmount ? ` (minimum ${money(f.minAmount, f.currency)})` : ''}</span>
+          <input type="number" min={f.minAmount || 1} step="1" value={amounts.includes(Number(v.amount)) ? '' : v.amount ?? ''} onChange={(e) => set(e.target.value === '' ? '' : Number(e.target.value))} style={{ maxWidth: 220 }} />
+        </label>
+      )}
+    </div>
+  );
+}
+
+function Subscription({ f, value, onChange }) {
+  const v = value || {};
+  return (
+    <div className="wf-choices">
+      {(f.plans || []).map((p) => (
+        <label key={p.id}>
+          <input type="radio" name={f.id} checked={v.plan === p.id} onChange={() => onChange({ plan: p.id })} />
+          <span className="grow"><b>{p.name}</b></span>
+          <span style={{ fontWeight: 600 }}>{money(p.price, f.currency)} / {p.interval}</span>
+        </label>
+      ))}
+    </div>
+  );
+}
+
 export function FieldInput({ f, value, onChange, formId, mode, computed }) {
   const v = value ?? '';
   const obj = value || {};
@@ -278,6 +341,11 @@ export function FieldInput({ f, value, onChange, formId, mode, computed }) {
       return <input readOnly value={`${f.prefix || ''}${shown}${f.suffix || ''}`} style={{ maxWidth: 240, background: '#f6f7fb' }} />;
     }
     case 'hidden': return null;
+    case 'fillblank': return <FillBlank f={f} value={value} onChange={onChange} />;
+    case 'spinner': return <Spinner f={f} value={value} onChange={onChange} />;
+    case 'donation': return <Donation f={f} value={value} onChange={onChange} />;
+    case 'subscription': return <Subscription f={f} value={value} onChange={onChange} />;
+    case 'widget': return <WidgetInput f={f} value={value} onChange={onChange} formId={formId} mode={mode} computed={computed} />;
     default: return <div className="hint">Unsupported field: {f.type}</div>;
   }
 }
@@ -290,6 +358,8 @@ export function DisplayBlock({ f }) {
     case 'image': return f.src ? <img src={f.src} alt={f.alt} style={{ width: `${f.width || 100}%`, borderRadius: 4 }} /> : <div className="hint">[Image — set a URL]</div>;
     case 'divider': return <hr style={{ border: 0, borderTop: '1px solid #e5e7ef' }} />;
     case 'pagebreak': return <div className="page-sep">— Page Break —</div>;
+    case 'section': return <div className="wg-section"><h3 style={{ margin: 0 }}>{f.label}</h3>{f.subheading && <div className="wf-desc">{f.subheading}</div>}</div>;
+    case 'widget': return <WidgetDisplay f={f} />;
     default: return null;
   }
 }

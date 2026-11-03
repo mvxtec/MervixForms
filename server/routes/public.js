@@ -6,8 +6,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { db, parseForm, parseSub, bumpUsage, getUsage, UPLOAD_DIR } from '../db.js';
 import { planOf } from '../../shared/plans.js';
-import { validateAll, productTotal } from '../../shared/logic.js';
+import { validateAll, productTotal, isAutoField } from '../../shared/logic.js';
 import { isInput, isEmpty } from '../../shared/fields.js';
+import { widgetKind } from '../../shared/widgets.js';
 import { afterSubmit, approvalToken, notifyDecision, BASE_URL } from '../notify.js';
 import { stripeEnabled, createCheckout, retrieveCheckout } from '../payments.js';
 
@@ -15,6 +16,25 @@ const r = Router();
 
 const loadForm = (id) => parseForm(db.prepare('SELECT * FROM forms WHERE id = ?').get(id));
 const ownerOf = (form) => db.prepare('SELECT id, email, name, plan FROM users WHERE id = ?').get(form.user_id);
+
+// Fields that accept uploaded files: File Upload and the capture widgets (photo, audio, video…).
+const isUploadField = (f) => f.type === 'file' || (f.type === 'widget' && widgetKind(f) === 'capture');
+
+const rosterMatch = (f, id, pin) => (f.roster || []).find((r) => String(r.id).trim().toLowerCase() === String(id || '').trim().toLowerCase()
+  && (f.mode === 'Employee ID only' || String(r.pin || '') === String(pin || '')));
+
+// Failed ID & PIN attempts per form, field and IP; locks out for 15 minutes after the field's limit.
+const attempts = new Map();
+function attemptsLeft(key, max) {
+  const a = attempts.get(key);
+  if (!a || a.until < Date.now()) return max;
+  return max - a.count;
+}
+function recordFailure(key) {
+  const a = attempts.get(key);
+  const fresh = !a || a.until < Date.now();
+  attempts.set(key, { count: fresh ? 1 : a.count + 1, until: Date.now() + 15 * 60 * 1000 });
+}
 
 function closedReason(form, owner) {
   const s = form.definition.settings || {};
@@ -33,6 +53,8 @@ function publicDefinition(def) {
   const { settings = {}, ...rest } = def;
   const { password, webhooks, notify, approvals, autoresponder, integrations, agent, ...safe } = settings;
   const { pdf, ...publicRest } = rest;
+  // ID & PIN rosters stay on the server; respondents verify through /verify-id.
+  publicRest.fields = (publicRest.fields || []).map(({ roster, ...f }) => f);
   return { ...publicRest, settings: { ...safe, approvalsEnabled: !!approvals?.enabled, agent: agent?.enabled ? { enabled: true, greeting: agent.greeting || '' } : undefined } };
 }
 
@@ -69,7 +91,7 @@ r.post('/forms/:id/upload', upload.single('file'), (req, res) => {
   const drop = () => file && fs.rmSync(file.path, { force: true });
   if (!form || form.status !== 'enabled' || !file) { drop(); return res.status(400).json({ error: 'Upload failed' }); }
   const owner = ownerOf(form);
-  const field = form.definition.fields.find((f) => f.id === req.body.field && f.type === 'file');
+  const field = form.definition.fields.find((f) => f.id === req.body.field && isUploadField(f));
   if (!field) { drop(); return res.status(400).json({ error: 'Unknown upload field' }); }
   if (file.size > (Number(field.maxSizeMb) || 10) * 1024 * 1024) { drop(); return res.status(413).json({ error: `File exceeds ${field.maxSizeMb} MB.` }); }
   if (field.accept) {
@@ -92,6 +114,18 @@ r.get('/forms/:id/booked', (req, res) => {
     for (const id of fieldIds) if (d[id]?.date === req.query.date) (booked[id] ||= []).push(d[id].slot);
   }
   res.json(booked);
+});
+
+r.post('/forms/:id/verify-id', (req, res) => {
+  const form = loadForm(req.params.id);
+  const f = form?.definition.fields.find((x) => x.id === req.body?.field && x.type === 'widget' && widgetKind(x) === 'idpin');
+  if (!f || form.status !== 'enabled') return res.status(404).json({ error: 'Not found' });
+  const key = `${form.id}:${f.id}:${req.ip}`;
+  const max = Number(f.maxAttempts) || 5;
+  if (attemptsLeft(key, max) <= 0) return res.status(429).json({ error: 'Too many failed attempts. Try again in 15 minutes.' });
+  const hit = rosterMatch(f, req.body.id, req.body.pin);
+  if (!hit) { recordFailure(key); return res.json({ ok: false }); }
+  res.json({ ok: true, name: hit.name || '' });
 });
 
 r.post('/forms/:id/draft', (req, res) => {
@@ -134,13 +168,28 @@ r.post('/forms/:id/submit', async (req, res) => {
 
   const data = {};
   for (const f of fields.filter(isInput)) {
-    if (state.hidden.has(f.id) && f.type !== 'hidden') continue;
+    if (state.hidden.has(f.id) && !isAutoField(f)) continue;
     if (f.type === 'captcha') continue;
     if (!isEmpty(state.values[f.id])) data[f.id] = state.values[f.id];
   }
 
+  // ID & PIN: check against the roster here (the public definition has no roster); never store the PIN.
+  for (const f of fields.filter((x) => x.type === 'widget' && widgetKind(x) === 'idpin')) {
+    const v = data[f.id];
+    if (!v?.id) continue;
+    const hit = rosterMatch(f, v.id, v.pin);
+    if (!hit) return res.status(422).json({ error: 'Please fix the highlighted fields.', errors: { [f.id]: 'ID or PIN not recognised.' } });
+    data[f.id] = { id: String(v.id).trim(), name: hit.name || '', verified: true };
+  }
+
+  // Unique ID widgets: sequential per form, e.g. ID-00042.
+  for (const f of fields.filter((x) => x.type === 'widget' && widgetKind(x) === 'uniqueId')) {
+    const n = db.prepare('SELECT COUNT(*) n FROM submissions WHERE form_id = ?').get(form.id).n + 1;
+    data[f.id] = `${f.prefix || ''}${String(n).padStart(Number(f.digits) || 5, '0')}`;
+  }
+
   // Verify uploads belong to this form.
-  for (const f of fields.filter((x) => x.type === 'file')) {
+  for (const f of fields.filter(isUploadField)) {
     if (!data[f.id]) continue;
     const files = (Array.isArray(data[f.id]) ? data[f.id] : [data[f.id]]).filter((x) => db.prepare('SELECT 1 FROM uploads WHERE id = ? AND form_id = ?').get(String(x.id), form.id));
     data[f.id] = files.map(({ id, name, size, mime }) => ({ id, name, size, mime }));
@@ -155,6 +204,8 @@ r.post('/forms/:id/submit', async (req, res) => {
   }
 
   // Payments: recompute totals server-side from the product catalog.
+  // Purchase Order collects no money now (owner invoices later); otherwise Stripe when configured, else test mode.
+  const gateway = settings.payment?.provider === 'purchaseOrder' ? 'purchaseOrder' : stripeEnabled() ? 'stripe' : 'test';
   let payment = null;
   const payItems = [];
   for (const f of fields.filter((x) => x.type === 'products')) {
@@ -165,7 +216,21 @@ r.post('/forms/:id/submit', async (req, res) => {
     v.total = productTotal(f, v);
     v.currency = f.currency;
     payItems.push(...v.items);
-    payment = { status: 'pending', amount: (payment?.amount || 0) + v.total, currency: f.currency, provider: stripeEnabled() ? 'stripe' : 'test' };
+    payment = { status: 'pending', amount: (payment?.amount || 0) + v.total, currency: f.currency, provider: gateway };
+  }
+  for (const f of fields.filter((x) => x.type === 'donation')) {
+    const amount = Math.round(Number(data[f.id]?.amount) * 100) / 100;
+    if (!(amount > 0)) continue;
+    data[f.id] = { amount, currency: f.currency };
+    payItems.push({ id: f.id, name: f.label || 'Donation', price: amount, qty: 1 });
+    payment = { status: 'pending', amount: (payment?.amount || 0) + amount, currency: f.currency, provider: gateway };
+  }
+  for (const f of fields.filter((x) => x.type === 'subscription')) {
+    const plan = (f.plans || []).find((pl) => pl.id === data[f.id]?.plan);
+    if (!plan) continue;
+    data[f.id] = { plan: plan.id, name: plan.name, price: Number(plan.price), interval: plan.interval, currency: f.currency };
+    payItems.push({ id: plan.id, name: `${f.label}: ${plan.name}`, price: Number(plan.price), qty: 1, interval: plan.interval });
+    payment = { status: 'pending', amount: (payment?.amount || 0) + Number(plan.price), currency: f.currency, provider: gateway, recurring: plan.interval };
   }
   if (payment && payment.amount > 0) {
     if (getUsage(owner.id).paymentsPerMonth >= plan.paymentsPerMonth) return res.status(402).json({ error: 'This form has reached its payment submission limit.' });

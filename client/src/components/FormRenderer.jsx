@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { computeState, buildPages, validateField } from '@shared/logic.js';
 import { isDisplay, isInput } from '@shared/fields.js';
+import { widgetKind } from '@shared/widgets.js';
 import { FieldInput, DisplayBlock } from './Fields.jsx';
 import { api } from '../api.js';
 
@@ -15,12 +16,37 @@ export function themeStyle(theme = {}) {
   };
 }
 
+// Values for metadata widgets, captured when the form opens.
+function metaValue(source) {
+  switch (source) {
+    case 'url': return window.location.href;
+    case 'referrer': return document.referrer || '';
+    case 'useragent': return navigator.userAgent;
+    case 'timestamp': return new Date().toISOString();
+    case 'random': return Math.random().toString(36).slice(2, 10).toUpperCase();
+    default: return '';
+  }
+}
+
+// Fields between a Section Collapse element and the next section or page break belong to that section.
+function sectionOf(fields) {
+  const out = {};
+  let current = null;
+  for (const f of fields) {
+    if (f.type === 'section') current = f.id;
+    else if (f.type === 'pagebreak') current = null;
+    else if (current) out[f.id] = current;
+  }
+  return out;
+}
+
 function initialValues(def, initial) {
   const params = new URLSearchParams(window.location.search);
   const v = { ...initial };
   for (const f of def.fields || []) {
     if (v[f.id] !== undefined) continue;
     if (f.type === 'hidden') v[f.id] = (f.fromUrl && params.get(f.fromUrl)) || f.defaultValue || '';
+    else if (f.type === 'widget' && widgetKind(f) === 'meta') v[f.id] = metaValue(f.source);
     else if (params.has(f.id) && isInput(f)) v[f.id] = params.get(f.id); // URL prefill: ?fieldId=value
   }
   return v;
@@ -39,6 +65,9 @@ export default function FormRenderer({ def, formId, mode = 'live', branding, ini
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState('');
   const [draft, setDraft] = useState({ token: initialDraft, url: '' });
+  const [collapsed, setCollapsed] = useState(() => new Set((def.fields || []).filter((f) => f.type === 'section' && f.collapsed).map((f) => f.id)));
+  const sections = useMemo(() => sectionOf(def.fields || []), [def]);
+  const fieldCss = (def.fields || []).filter((f) => f.css).map((f) => f.css).join('\n');
 
   const state = useMemo(() => computeState(def, raw), [def, raw]);
   const allPages = useMemo(() => buildPages(def), [def]);
@@ -58,6 +87,8 @@ export default function FormRenderer({ def, formId, mode = 'live', branding, ini
       if (e) errs[f.id] = e;
     }
     setErrors(errs);
+    const open = Object.keys(errs).map((id) => sections[id]).filter(Boolean);
+    if (open.length) setCollapsed((c) => new Set([...c].filter((id) => !open.includes(id))));
     return !Object.keys(errs).length;
   };
 
@@ -123,6 +154,7 @@ export default function FormRenderer({ def, formId, mode = 'live', branding, ini
   return (
     <div className={`wf ${isCard ? 'wf-card-mode' : ''}`} style={themeStyle(theme)}>
       {theme.css && <style>{theme.css}</style>}
+      {fieldCss && <style>{fieldCss}</style>}
       <div className={`wf-card ${isCard ? '' : 'has-cover'}`}>
         {!isCard && <div className="wf-cover" aria-hidden="true" />}
         {theme.logo && <img className="wf-logo" src={theme.logo} alt="" />}
@@ -136,9 +168,14 @@ export default function FormRenderer({ def, formId, mode = 'live', branding, ini
         ) : (
           <form onSubmit={(e) => { e.preventDefault(); next(); }} noValidate>
             {settings.showProgress !== false && allPages.length > 1 && <div className="wf-progress"><div style={{ width: `${progress}%` }} /></div>}
-            {visibleOn(page).map((f) => (
+            {visibleOn(page).filter((f) => !collapsed.has(sections[f.id])).map((f) => (
               <div key={f.id} className={`wf-field ${errors[f.id] ? 'has-err' : ''}`} id={`field-${f.id}`}>
-                {isDisplay(f) ? <DisplayBlock f={f} /> : f.type === 'hidden' ? null : (
+                {f.type === 'section' ? (
+                  <button type="button" className="wg-section-toggle" aria-expanded={!collapsed.has(f.id)} onClick={() => setCollapsed((c) => { const n = new Set(c); n.has(f.id) ? n.delete(f.id) : n.add(f.id); return n; })}>
+                    <span aria-hidden="true">{collapsed.has(f.id) ? '▸' : '▾'}</span>
+                    <span><span style={{ display: 'block', fontWeight: 600, fontSize: 18 }}>{f.label}</span>{f.subheading && <span className="wf-desc" style={{ display: 'block' }}>{f.subheading}</span>}</span>
+                  </button>
+                ) : isDisplay(f) ? <DisplayBlock f={f} /> : f.type === 'hidden' ? null : (
                   <>
                     {f.type !== 'terms' && <label className="wf-label">{f.label}{state.required.has(f.id) && <span className="wf-req">*</span>}</label>}
                     <FieldInput f={f} value={raw[f.id]} computed={state.values[f.id]} onChange={(v) => set(f.id, v)} formId={formId} mode={mode} />

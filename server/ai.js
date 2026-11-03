@@ -38,7 +38,8 @@ async function structured(schema, { system, messages, effort = 'medium', maxToke
   return response.parsed_output;
 }
 
-const INPUT_TYPES = Object.keys(FIELD_TYPES).filter((t) => !FIELD_TYPES[t].display);
+// Widgets need a catalog key the generator doesn't know, so it sticks to basic elements.
+const INPUT_TYPES = Object.keys(FIELD_TYPES).filter((t) => !FIELD_TYPES[t].display && t !== 'widget');
 const BUILDABLE = [...INPUT_TYPES, 'heading', 'paragraph', 'divider', 'pagebreak'];
 
 const FormSpec = z.object({
@@ -134,7 +135,7 @@ export async function translateForm(def, language) {
 }
 
 // --- Conversational agent ---------------------------------------------------
-const CHAT_UNSUPPORTED = ['file', 'signature', 'products', 'captcha', 'appointment', 'calculation', 'hidden'];
+const CHAT_UNSUPPORTED = ['file', 'signature', 'products', 'captcha', 'appointment', 'calculation', 'hidden', 'widget', 'donation', 'subscription', 'fillblank'];
 
 export const chatFields = (def) => def.fields.filter((f) => isInput(f) && !CHAT_UNSUPPORTED.includes(f.type));
 

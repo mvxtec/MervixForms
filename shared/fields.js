@@ -1,27 +1,14 @@
 // Field catalog shared by builder, renderer and server-side validation.
+import { WIDGET_BY_KEY, isDisplayWidget, formatWidget } from './widgets.js';
 
+// Basic tab of the builder palette, in Jotform's order. Payment elements live on the Payments tab.
 export const FIELD_GROUPS = [
-  {
-    name: 'Basic',
-    types: ['heading', 'fullname', 'email', 'phone', 'address', 'text', 'textarea', 'number', 'date', 'time', 'dropdown', 'radio', 'checkbox', 'file', 'url'],
-  },
-  {
-    name: 'Survey',
-    types: ['rating', 'scale', 'slider', 'matrix', 'yesno'],
-  },
-  {
-    name: 'Payments',
-    types: ['products'],
-  },
-  {
-    name: 'Advanced',
-    types: ['signature', 'appointment', 'calculation', 'hidden', 'terms', 'captcha'],
-  },
-  {
-    name: 'Layout',
-    types: ['paragraph', 'image', 'divider', 'pagebreak'],
-  },
+  { name: 'Quick elements', types: ['heading', 'fullname', 'email', 'address', 'phone', 'date', 'appointment', 'signature', 'fillblank', 'products'] },
+  { name: 'Basic elements', types: ['text', 'textarea', 'paragraph', 'dropdown', 'radio', 'checkbox', 'number', 'image', 'file', 'time', 'captcha', 'spinner', 'url', 'yesno', 'slider', 'calculation', 'hidden', 'terms'] },
+  { name: 'Survey elements', types: ['matrix', 'rating', 'scale'] },
+  { name: 'Page elements', types: ['divider', 'section', 'pagebreak'] },
 ];
+export const PAYMENT_TYPES = ['products', 'donation', 'subscription'];
 
 export const FIELD_TYPES = {
   heading: { label: 'Heading', icon: 'H', display: true, defaults: { label: 'Heading', subheading: '' } },
@@ -29,6 +16,7 @@ export const FIELD_TYPES = {
   image: { label: 'Image', icon: '🖼', display: true, defaults: { label: 'Image', src: '', alt: '', width: 100 } },
   divider: { label: 'Divider', icon: '—', display: true, defaults: { label: 'Divider' } },
   pagebreak: { label: 'Page Break', icon: '⤓', display: true, defaults: { label: 'Page Break' } },
+  section: { label: 'Section Collapse', icon: '▸', display: true, defaults: { label: 'Section', subheading: '', collapsed: false } },
 
   text: { label: 'Short Text', icon: 'T', defaults: { label: 'Short Text', placeholder: '', maxLength: '' } },
   textarea: { label: 'Long Text', icon: '≡', defaults: { label: 'Long Text', placeholder: '', rows: 4, maxLength: '' } },
@@ -65,9 +53,23 @@ export const FIELD_TYPES = {
   hidden: { label: 'Hidden Field', icon: '◌', defaults: { label: 'Hidden', defaultValue: '', fromUrl: '' } },
   terms: { label: 'Terms & Conditions', icon: '✓', defaults: { label: 'Terms & Conditions', text: 'I agree to the terms and conditions.' } },
   captcha: { label: 'Captcha', icon: '🛡', defaults: { label: 'Please verify you are human' } },
+  fillblank: { label: 'Fill in the Blank', icon: '__', defaults: { label: 'Fill in the blanks', text: 'My name is {blank} and I live in {blank}.' } },
+  spinner: { label: 'Spinner', icon: '±', defaults: { label: 'Quantity', min: 0, max: 10, step: 1 } },
+  donation: {
+    label: 'Donation', icon: '♥', payment: true,
+    defaults: { label: 'Donation', currency: 'INR', amounts: [500, 1000, 2500], custom: true, minAmount: 100, description: '' },
+  },
+  subscription: {
+    label: 'Subscription', icon: '↻', payment: true,
+    defaults: {
+      label: 'Choose a plan', currency: 'INR',
+      plans: [{ id: 's1', name: 'Monthly', price: 499, interval: 'month' }, { id: 's2', name: 'Yearly', price: 4999, interval: 'year' }],
+    },
+  },
+  widget: { label: 'Widget', icon: '◆', defaults: {} },
 };
 
-export const isDisplay = (f) => !!FIELD_TYPES[f.type]?.display;
+export const isDisplay = (f) => !!FIELD_TYPES[f.type]?.display || (f.type === 'widget' && isDisplayWidget(f));
 export const isInput = (f) => !isDisplay(f);
 
 let seq = 0;
@@ -78,6 +80,18 @@ export function newField(type) {
   const defaults = JSON.parse(JSON.stringify(meta.defaults));
   return { id, type, required: false, description: '', ...defaults };
 }
+
+// A palette widget becomes either a widget field or (for aliases) a basic element with preset settings.
+export function newWidget(key) {
+  const w = WIDGET_BY_KEY[key];
+  if (!w || w.soon) return null;
+  if (w.kind === 'alias') return { ...newField(w.type), ...JSON.parse(JSON.stringify(w.defaults)) };
+  const f = newField('widget');
+  return { ...f, widget: key, label: w.label, ...JSON.parse(JSON.stringify(w.defaults)) };
+}
+
+// Display name of a field's type (widgets show their own name).
+export const typeLabel = (f) => (f.type === 'widget' ? WIDGET_BY_KEY[f.widget]?.label || 'Widget' : FIELD_TYPES[f.type]?.label || f.type);
 
 export function isEmpty(v) {
   if (v === undefined || v === null || v === '') return true;
@@ -104,6 +118,13 @@ export function formatValue(field, v) {
     case 'appointment': return `${v.date} ${v.slot}`;
     case 'products':
       return (v.items || []).map((i) => `${i.name} x${i.qty}`).join(', ') + ` — ${v.currency || ''} ${Number(v.total || 0).toFixed(2)}`;
+    case 'donation': return `${v.currency || field.currency || ''} ${Number(v.amount || 0).toFixed(2)}`;
+    case 'subscription': {
+      const plan = (field.plans || []).find((p) => p.id === v.plan);
+      return plan ? `${plan.name} — ${field.currency} ${plan.price} / ${plan.interval}` : String(v.plan || '');
+    }
+    case 'fillblank': return Object.keys(v).sort((a, b) => a - b).map((k) => v[k]).join(' / ');
+    case 'widget': return formatWidget(field, v);
     default: return typeof v === 'object' ? JSON.stringify(v) : String(v);
   }
 }
