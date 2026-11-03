@@ -176,6 +176,9 @@ addColumn('outbox', 'status', "status TEXT NOT NULL DEFAULT 'stored'"); // store
 addColumn('outbox', 'error', 'error TEXT');
 addColumn('outbox', 'attachments', 'attachments TEXT');
 
+// Users who sign in with Google / Microsoft: provider + subject id.
+addColumn('users', 'oauth', 'oauth TEXT');
+
 // Workflows: a tree of steps run after each submission (see server/workflows.js).
 db.exec(`
 CREATE TABLE IF NOT EXISTS workflows (
@@ -241,3 +244,6 @@ export const parseForm = (row) => row && ({ ...row, favorite: !!row.favorite, de
 export const parseSub = (row) => row && ({
   ...row, starred: !!row.starred, signed: !!row.signed, data: JSON.parse(row.data), payment: row.payment ? JSON.parse(row.payment) : null,
 });
+
+// Stars on the unified workspace list.
+for (const t of ['workflows', 'apps', 'sign_docs']) addColumn(t, 'favorite', 'favorite INTEGER NOT NULL DEFAULT 0');

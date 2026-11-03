@@ -127,7 +127,7 @@ r.patch('/forms/:id', (req, res) => {
   const f = ownForm(req, res);
   if (!f) return;
   const { status, favorite, folder, title } = req.body || {};
-  if (status && ['enabled', 'disabled', 'trashed'].includes(status)) {
+  if (status && ['enabled', 'disabled', 'trashed', 'archived'].includes(status)) {
     if (f.status === 'trashed' && status !== 'trashed' && !checkFormQuota(req, res)) return;
     db.prepare('UPDATE forms SET status = ? WHERE id = ?').run(status, f.id);
   }

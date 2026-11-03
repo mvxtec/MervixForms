@@ -24,3 +24,18 @@ export function match(pattern, route) {
   }
   return params;
 }
+
+// Query string of a hash route: '/templates?type=apps' → URLSearchParams.
+export const query = (route) => new URLSearchParams(route.split('?')[1] || '');
+
+// Something a signed-out visitor started on the public site (an AI prompt or a template),
+// carried through sign-up and picked up by the workspace.
+const PENDING = 'mf_pending';
+export const setPending = (v) => { try { sessionStorage.setItem(PENDING, JSON.stringify(v)); } catch { /* storage blocked */ } };
+export function takePending() {
+  try {
+    const v = JSON.parse(sessionStorage.getItem(PENDING) || 'null');
+    sessionStorage.removeItem(PENDING);
+    return v;
+  } catch { return null; }
+}

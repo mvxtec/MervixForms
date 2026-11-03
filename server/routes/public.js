@@ -11,6 +11,7 @@ import { isInput, isEmpty } from '../../shared/fields.js';
 import { widgetKind } from '../../shared/widgets.js';
 import { afterSubmit, approvalToken, notifyDecision, BASE_URL } from '../notify.js';
 import { stripeEnabled, createCheckout, retrieveCheckout } from '../payments.js';
+import { TEMPLATES } from '../templates.js';
 
 const r = Router();
 
@@ -57,6 +58,9 @@ function publicDefinition(def) {
   publicRest.fields = (publicRest.fields || []).map(({ roster, ...f }) => f);
   return { ...publicRest, settings: { ...safe, approvalsEnabled: !!approvals?.enabled, agent: agent?.enabled ? { enabled: true, greeting: agent.greeting || '' } : undefined } };
 }
+
+// Template list for the public landing and templates pages.
+r.get('/templates', (req, res) => res.json(TEMPLATES.map(({ definition, ...t }) => ({ ...t, fieldCount: definition.fields.length, layout: definition.layout, primary: definition.theme.primary }))));
 
 r.get('/forms/:id', (req, res) => {
   const form = loadForm(req.params.id);

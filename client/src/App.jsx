@@ -1,29 +1,56 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { api } from './api.js';
-import { useHashRoute, match, navigate } from './router.js';
+import { useHashRoute, match, navigate, query, takePending, setPending } from './router.js';
 import Auth from './pages/Auth.jsx';
-import Workspace from './pages/Workspace.jsx';
+import Home from './pages/Home.jsx';
+import Site, { SITE_PAGES } from './pages/Site.jsx';
 import FormWorkspace from './pages/FormWorkspace.jsx';
 import Account from './pages/Account.jsx';
 import Approve from './pages/Approve.jsx';
 import SignPublic from './pages/SignPublic.jsx';
 import { SignList, SignEditor } from './pages/Sign.jsx';
 import { AppsList, AppEditor } from './pages/Apps.jsx';
-import Icon from './components/Icon.jsx';
 import WorkflowBuilder from './pages/WorkflowBuilder.jsx';
-import CreateMenu from './components/CreateMenu.jsx';
 import { WorkflowsPage } from './pages/Workflows.jsx';
 import { WfTask, Track } from './pages/WfPublic.jsx';
+import { MegaMenus, WorkspaceSwitcher, UserMenu } from './components/SiteMenus.jsx';
+import { switchTo } from './pages/Home.jsx';
 
 const MeContext = createContext(null);
 export const useMe = () => useContext(MeContext);
 
+function AppHeader({ me, view, onLogout }) {
+  return (
+    <header className="app-header">
+      <a href="#/" className="brand"><span className="logo">W</span><span className="brand-name">WpForms</span></a>
+      <WorkspaceSwitcher me={me} view={view} onSwitchTeam={switchTo} />
+      <MegaMenus signedIn dark />
+      <div className="row" style={{ marginLeft: 'auto' }}>
+        <a className="hdr-link" href="#/pricing">{me.plan.name === 'Enterprise' ? 'Enterprise' : 'Upgrade'}</a>
+        <UserMenu me={me} onLogout={onLogout} />
+      </div>
+    </header>
+  );
+}
+
 export default function App() {
   const route = useHashRoute();
+  const page = route.split('?')[0];
   const [me, setMe] = useState(undefined);
-  const [creating, setCreating] = useState(false);
   const refresh = () => api('/me').then(setMe).catch(() => setMe(null));
   useEffect(() => { refresh(); }, []);
+
+  // Signed in on a login page (e.g. back from Google): go to the workspace. A template or blank form
+  // chosen on the public site before signing up is created now; an AI prompt waits for the workspace.
+  useEffect(() => {
+    if (!me) return;
+    if (page === '/login' || page === '/signup') navigate('/');
+    const p = takePending();
+    if (p?.templateId || p?.blank) {
+      api('/forms', { method: 'POST', body: p.blank ? { title: 'Untitled Form' } : { templateId: p.templateId } })
+        .then(({ id }) => navigate(`/forms/${id}/build`)).catch(() => {});
+    } else if (p) setPending(p);
+  }, [me, page]);
 
   // Public pages reached from e-mailed links (no login).
   const approve = match('/approve/:sid/:email/:token', route);
@@ -36,9 +63,14 @@ export default function App() {
   if (track) return <Track token={track.token} />;
 
   if (me === undefined) return <div className="page muted">Loading…</div>;
-  if (!me) return <Auth onDone={refresh} />;
+  if (!me) {
+    if (page === '/signup' || page === '/login') return <Auth key={page} mode={page.slice(1)} error={query(route).get('error') || ''} onDone={refresh} />;
+    if (SITE_PAGES.includes(page)) return <Site me={null} route={route} />;
+    return <Auth mode="login" onDone={refresh} />;
+  }
+  if (page !== '/' && (SITE_PAGES.includes(page) || page === '/home')) return <Site me={me} route={route} />;
 
-  let body, m;
+  let body, m, view;
   if ((m = match('/forms/:id/:tab/:sid', route)) || (m = match('/forms/:id/:tab', route))) body = <FormWorkspace key={m.id} {...m} />;
   else if ((m = match('/account/:section', route)) || route === '/account') body = <Account section={m?.section || 'plan'} />;
   else if ((m = match('/sign-docs/:id', route))) body = <SignEditor key={m.id} id={m.id} />;
@@ -47,54 +79,17 @@ export default function App() {
   else if (route.startsWith('/apps')) body = <AppsList />;
   else if ((m = match('/workflows/:id/:tab', route)) || (m = match('/workflows/:id', route))) body = <WorkflowBuilder key={m.id} id={m.id} tab={m.tab} />;
   else if (route.startsWith('/workflows')) body = <WorkflowsPage />;
-  else body = <Workspace />;
+  else if ((m = match('/w/label/:label', route))) { view = 'label'; body = <Home view="label" label={m.label} />; }
+  else if ((m = match('/w/:view', route))) { view = m.view; body = <Home view={m.view} />; }
+  else body = <Home view="all" />;
 
   const logout = async () => { await api('/auth/logout', { method: 'POST' }); setMe(null); navigate('/'); };
-  const switchWs = async (id) => { await api('/workspace', { method: 'POST', body: { id: Number(id) } }); navigate('/'); window.location.reload(); };
-  const top = route.split('/')[1] || '';
-  const nav = [
-    ['#/', 'forms', 'Forms', top === '' || top === 'forms'],
-    ['#/sign-docs', 'sign', 'Sign documents', top.startsWith('sign')],
-    ['#/workflows', 'redo', 'Workflows', top === 'workflows'],
-    ['#/apps', 'apps', 'Apps & stores', top === 'apps'],
-    ['#/account/plan', 'account', 'Account', top === 'account'],
-  ];
-  const subs = me.plan.submissionsPerMonth;
-  const used = me.usage.submissionsPerMonth;
 
   return (
     <MeContext.Provider value={{ ...me, refresh }}>
-      <div className="shell">
-        <aside className="side" aria-label="Main">
-          <a href="#/" className="brand"><span className="logo">W</span>WpForms</a>
-          {me.workspaces.length > 1 ? (
-            <select className="ws-switch" value={me.workspace.id} onChange={(e) => switchWs(e.target.value)} aria-label="Workspace">
-              {me.workspaces.map((w) => <option key={w.id} value={w.id}>{w.id === me.user.id ? 'My workspace' : `${w.email}'s team`} ({w.role})</option>)}
-            </select>
-          ) : (
-            <div className="hint" style={{ padding: '0 10px' }}>{me.plan.name} plan{me.workspace.role !== 'owner' ? ` · ${me.workspace.role}` : ''}</div>
-          )}
-          <button className="primary" style={{ minHeight: 42, width: '100%' }} onClick={() => setCreating(true)}><Icon name="plus" />Create</button>
-          <nav className="side-nav">
-            {nav.map(([href, icon, label, active]) => (
-              <a key={href} href={href} className={active ? 'active' : ''} aria-current={active ? 'page' : undefined}><Icon name={icon} />{label}</a>
-            ))}
-          </nav>
-          <div className="side-foot">
-            <div className="usage">
-              <span className="muted">Submissions this month</span>
-              <b>{used.toLocaleString()} / {subs == null ? '∞' : subs.toLocaleString()}</b>
-              <div className={`meter ${subs != null && used >= subs ? 'full' : ''}`}><div style={{ width: subs ? `${Math.min(100, (used / subs) * 100)}%` : '0%' }} /></div>
-              <a href="#/account/plan">{me.plan.name} plan · Manage</a>
-            </div>
-            <div className="side-user">
-              <span className="grow" title={me.user.email}>{me.user.email}</span>
-              <button className="icon-btn small ghost" onClick={logout} aria-label="Log out" title="Log out"><Icon name="logout" /></button>
-            </div>
-          </div>
-        </aside>
-        <div className="main">{body}</div>
-        {creating && <CreateMenu onClose={() => setCreating(false)} />}
+      <div className="app">
+        <AppHeader me={me} view={view} onLogout={logout} />
+        <div className="app-body">{body}</div>
       </div>
     </MeContext.Provider>
   );

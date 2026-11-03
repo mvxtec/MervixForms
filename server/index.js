@@ -21,6 +21,8 @@ const { default: ai } = await import('./routes/ai.js');
 const { default: sign } = await import('./routes/sign.js');
 const { default: apps } = await import('./routes/apps.js');
 const { default: workflows } = await import('./routes/workflows.js');
+const { default: oauth } = await import('./routes/oauth.js');
+const { default: workspace } = await import('./routes/workspace.js');
 const { startScheduler } = await import('./workflows.js');
 startScheduler();
 
@@ -37,6 +39,8 @@ app.use('/api', ai);
 app.use('/api', sign);
 app.use('/api', apps);
 app.use('/api', workflows);
+app.use('/api', oauth);
+app.use('/api', workspace);
 app.use('/api', account);
 app.use('/api', forms);
 app.use('/api', submissions);
