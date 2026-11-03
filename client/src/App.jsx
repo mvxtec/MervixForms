@@ -15,6 +15,8 @@ import { WorkflowsPage } from './pages/Workflows.jsx';
 import { WfTask, Track } from './pages/WfPublic.jsx';
 import { MegaMenus, WorkspaceSwitcher, UserMenu } from './components/SiteMenus.jsx';
 import { switchTo } from './pages/Home.jsx';
+import Logo from './components/Logo.jsx';
+import Icon from './components/Icon.jsx';
 
 const MeContext = createContext(null);
 export const useMe = () => useContext(MeContext);
@@ -22,15 +24,22 @@ export const useMe = () => useContext(MeContext);
 function AppHeader({ me, view, onLogout }) {
   return (
     <header className="app-header">
-      <a href="#/" className="brand"><span className="logo">W</span><span className="brand-name">WpForms</span></a>
+      <SkipLink />
+      <Logo />
+      <span className="hdr-sep" aria-hidden="true">/</span>
       <WorkspaceSwitcher me={me} view={view} onSwitchTeam={switchTo} />
-      <MegaMenus signedIn dark />
-      <div className="row" style={{ marginLeft: 'auto' }}>
-        <a className="hdr-link" href="#/pricing">{me.plan.name === 'Enterprise' ? 'Enterprise' : 'Upgrade'}</a>
+      <MegaMenus signedIn />
+      <div className="hdr-right">
+        {me.plan.name !== 'Enterprise' && <a className="btn small" href="#/account/plan"><Icon name="bolt" size={14} />Upgrade</a>}
         <UserMenu me={me} onLogout={onLogout} />
       </div>
     </header>
   );
+}
+
+// Hash routing owns location.hash, so the skip link moves focus instead of navigating.
+export function SkipLink() {
+  return <a className="skip-link" href="#/" onClick={(e) => { e.preventDefault(); document.getElementById('main')?.focus(); }}>Skip to content</a>;
 }
 
 export default function App() {
@@ -89,7 +98,7 @@ export default function App() {
     <MeContext.Provider value={{ ...me, refresh }}>
       <div className="app">
         <AppHeader me={me} view={view} onLogout={logout} />
-        <div className="app-body">{body}</div>
+        <main id="main" tabIndex={-1} className="app-body">{body}</main>
       </div>
     </MeContext.Provider>
   );

@@ -81,6 +81,7 @@ r.put('/workflows/:id', (req, res) => {
   const wf = own(req, res);
   if (!wf) return;
   const { title, status, definition } = req.body || {};
+  if (definition !== undefined && (!definition || typeof definition !== 'object' || !Array.isArray(definition.steps))) return res.status(400).json({ error: 'Invalid workflow definition' });
   db.prepare("UPDATE workflows SET title = ?, status = ?, definition = ?, updated_at = datetime('now') WHERE id = ?").run(
     String(title ?? wf.title).slice(0, 120), status === 'disabled' ? 'disabled' : status === 'enabled' ? 'enabled' : wf.status, JSON.stringify(definition || wf.definition), wf.id,
   );
@@ -110,7 +111,11 @@ r.post('/workflows/:id/runs/:rid/:action', async (req, res) => {
   const run = db.prepare('SELECT * FROM workflow_runs WHERE id = ? AND workflow_id = ?').get(req.params.rid, wf.id);
   if (!run) return res.status(404).json({ error: 'Run not found' });
   if (req.params.action === 'cancel') db.prepare("UPDATE workflow_runs SET status = 'cancelled' WHERE id = ?").run(run.id);
-  else if (req.params.action === 'resume') await resumeRun(run.id);
+  else if (req.params.action === 'resume') {
+    // Approvals and tasks continue when someone decides them; resuming would send them again.
+    if (db.prepare("SELECT 1 FROM workflow_tasks WHERE run_id = ? AND status = 'pending'").get(run.id)) return res.status(409).json({ error: 'This run is waiting for an approval or task. It continues when that is decided.' });
+    await resumeRun(run.id);
+  }
   else if (req.params.action === 'restart') {
     db.prepare("UPDATE workflow_runs SET status = 'cancelled' WHERE id = ? AND status IN ('running', 'waiting')").run(run.id);
     const sub = parseSub(db.prepare('SELECT * FROM submissions WHERE id = ?').get(run.submission_id));

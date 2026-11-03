@@ -7,15 +7,16 @@ import { useMe } from '../App.jsx';
 import Icon from '../components/Icon.jsx';
 import { NewFormModal, AiBox } from './Workspace.jsx';
 import CreateMenu from '../components/CreateMenu.jsx';
+import Menu from '../components/Menu.jsx';
 
 export const TYPES = {
-  form: { label: 'Form', icon: 'forms', color: '#ea580c' },
-  workflow: { label: 'Workflow', icon: 'redo', color: '#0f766e' },
-  app: { label: 'App', icon: 'apps', color: '#7c3aed' },
-  store: { label: 'Store', icon: 'apps', color: '#0e7490' },
-  sign: { label: 'Sign document', icon: 'sign', color: '#65a30d' },
+  form: { label: 'Form', icon: 'forms' },
+  workflow: { label: 'Workflow', icon: 'workflow' },
+  app: { label: 'App', icon: 'apps' },
+  store: { label: 'Store', icon: 'store' },
+  sign: { label: 'Sign document', icon: 'sign' },
 };
-const VIEW_TITLES = { all: 'All', favorites: 'Favorites', archive: 'Archive', trash: 'Trash', tasks: 'Assigned Tasks', forms: 'My Forms', workflows: 'My Workflows', apps: 'My Apps', sign: 'My Sign Documents' };
+const VIEW_TITLES = { all: 'All items', favorites: 'Favorites', archive: 'Archive', trash: 'Trash', tasks: 'Assigned to me', forms: 'Forms', workflows: 'Workflows', apps: 'Apps and stores', sign: 'Sign documents' };
 const LABELS_KEY = 'mf_labels'; // labels created but not yet given to any form
 
 function readLabels() { try { return JSON.parse(localStorage.getItem(LABELS_KEY) || '[]'); } catch { return []; } }
@@ -29,29 +30,29 @@ function Sidebar({ view, label, labels, onCreate, onAddLabel, taskCount }) {
   const item = (href, icon, text, on, extra) => (
     <a href={href} className={on ? 'active' : ''} aria-current={on ? 'page' : undefined}><Icon name={icon} />{text}{extra}</a>
   );
-  const soon = (icon, text) => <span className="side-soon" aria-disabled="true"><Icon name={icon} />{text}<span className="pill" style={{ fontSize: 10, padding: '0 6px', marginLeft: 'auto' }}>Soon</span></span>;
+  const soon = (icon, text) => <span className="side-soon" aria-disabled="true"><Icon name={icon} />{text}<span className="tag" style={{ marginLeft: 'auto' }}>Soon</span></span>;
   return (
     <aside className="ws-side" aria-label="Workspace">
       <button className="create-btn" onClick={onCreate}><Icon name="plus" />Create</button>
       <button className="side-ai" onClick={() => onCreate('ai')}><Icon name="sparkles" />Create with AI</button>
       <nav className="side-nav">
-        <span className="side-label">My Workspace</span>
+        <span className="side-label">Workspace</span>
         {item('#/', 'apps', 'All', view === 'all')}
-        {[...labels].map((l) => item(`#/w/label/${encodeURIComponent(l)}`, 'folder', l, view === 'label' && label === l))}
+        {[...labels].map((l) => item(`#/w/label/${encodeURIComponent(l)}`, 'tag', l, view === 'label' && label === l))}
         <button className="side-add" onClick={onAddLabel}><Icon name="plus" size={14} />Add label</button>
 
-        <span className="side-label">Team Workspaces</span>
-        {teams.map((w) => <button key={w.id} className="side-add" onClick={() => switchTo(w.id)}><Icon name="account" size={16} />{w.email.split('@')[0]}'s team</button>)}
+        <span className="side-label">Teams</span>
+        {teams.map((w) => <button key={w.id} className="side-add" onClick={() => switchTo(w.id)}><Icon name="users" size={16} />{w.email.split('@')[0]}'s team</button>)}
         {me.workspace.id !== me.user.id && <button className="side-add" onClick={() => switchTo(me.user.id)}><Icon name="back" size={16} />Back to my workspace</button>}
-        {item('#/account/team', 'plus', 'Create team', false)}
+        {item('#/account/team', 'plus', 'Create a team', false)}
 
         <span className="side-label" />
-        {soon('account', 'Shared with Me')}
-        {item('#/w/tasks', 'check', 'Assigned Tasks', view === 'tasks', taskCount ? <span className="badge" style={{ marginLeft: 'auto' }}>{taskCount}</span> : null)}
-        {soon('forms', 'Continue Filling')}
-        {soon('external', 'Sent')}
+        {soon('users', 'Shared with me')}
+        {item('#/w/tasks', 'task', 'Assigned to me', view === 'tasks', taskCount ? <span className="badge" style={{ marginLeft: 'auto' }}>{taskCount}</span> : null)}
+        {soon('edit', 'Continue filling')}
+        {soon('send', 'Sent')}
         {item('#/w/favorites', 'star', 'Favorites', view === 'favorites')}
-        {item('#/w/archive', 'folder', 'Archive', view === 'archive')}
+        {item('#/w/archive', 'archive', 'Archive', view === 'archive')}
         {item('#/w/trash', 'trash', 'Trash', view === 'trash')}
       </nav>
       <div className="side-foot">
@@ -81,7 +82,7 @@ function Tasks({ onCount }) {
     <ul className="ws-list">
       {rows.map((t) => (
         <li key={t.token} className="ws-row">
-          <span className="ws-type" style={{ background: TYPES.workflow.color }}><Icon name={t.kind === 'approval' ? 'check' : 'forms'} size={18} /></span>
+          <span className="ws-type"><Icon name={t.kind === 'approval' ? 'approval' : 'task'} size={18} /></span>
           <div className="ws-title">
             <a href={`#/wf-task/${t.token}`}>{t.kind === 'approval' ? 'Approval' : 'Task'} · {t.workflow}</a>
             <span className="hint">{t.form ? `${t.form} · ` : ''}submission #{t.submission_id} · assigned {fmtDate(t.created_at)}</span>
@@ -119,17 +120,18 @@ function RowMenu({ it, view, act }) {
   return (
     <div className="row">
       <a className="btn small" href={it.href}>Edit</a>
-      <select className="small" style={{ width: 'auto', minHeight: 30 }} value="" aria-label={`More actions for ${it.title}`} onChange={(e) => choose(e.target.value)}>
-        <option value="">More…</option>
-        <option value="inbox">Inbox</option>
-        <option value="open">Open form</option>
-        <option value="rename">Rename</option>
-        <option value="clone">Clone</option>
-        <option value="toggle">{it.status === 'enabled' ? 'Disable' : 'Enable'}</option>
-        <option value="label">Set label</option>
-        <option value="archive">Archive</option>
-        <option value="trash">Move to trash</option>
-      </select>
+      <Menu label={`Actions for ${it.title}`} items={[
+        { icon: 'inbox', label: 'Inbox', onClick: () => choose('inbox') },
+        { icon: 'external', label: 'Open form', onClick: () => choose('open') },
+        '-',
+        { icon: 'edit', label: 'Rename', onClick: () => choose('rename') },
+        { icon: 'copy', label: 'Duplicate', onClick: () => choose('clone') },
+        { icon: 'tag', label: 'Set label', onClick: () => choose('label') },
+        { icon: it.status === 'enabled' ? 'pause' : 'play', label: it.status === 'enabled' ? 'Disable' : 'Enable', onClick: () => choose('toggle') },
+        '-',
+        { icon: 'archive', label: 'Archive', onClick: () => choose('archive') },
+        { icon: 'trash', label: 'Move to trash', danger: true, onClick: () => choose('trash') },
+      ]} />
     </div>
   );
 }
@@ -255,13 +257,13 @@ export default function Home({ view = 'all', label = '' }) {
                           <Icon name="star" size={18} fill={it.favorite ? 'currentColor' : 'none'} />
                         </button>
                       )}
-                      <span className="ws-type" style={{ background: t.color }} title={t.label}><Icon name={t.icon} size={18} /></span>
+                      <span className="ws-type" title={t.label}><Icon name={t.icon} size={18} /></span>
                       <div className="ws-title">
                         <a href={it.href}>{it.title}</a>
                         <span className="hint">{t.label} · {it.meta}{it.folder ? ` · ${it.folder}` : ''} · Last edited {fmtDate(it.updated_at)}</span>
                       </div>
                       {it.type === 'form' && it.status === 'disabled' && <span className="pill amber">Disabled</span>}
-                      {it.type !== 'form' && it.status && <span className="pill">{it.status}</span>}
+                      {it.type !== 'form' && it.status && <span className={`pill ${['enabled', 'active', 'published', 'completed'].includes(it.status) ? 'green' : ['draft', 'sent', 'pending'].includes(it.status) ? 'amber' : ''}`}>{{ enabled: 'Live', disabled: 'Off' }[it.status] || it.status[0].toUpperCase() + it.status.slice(1)}</span>}
                       <RowMenu it={it} view={view} act={act} />
                     </li>
                   );

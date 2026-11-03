@@ -3,6 +3,7 @@ import QRCode from 'qrcode';
 import { api, fmtDate } from '../api.js';
 import { navigate } from '../router.js';
 import AppView from '../components/AppView.jsx';
+import Icon from '../components/Icon.jsx';
 
 const ELEMENTS = [['heading', 'Heading'], ['text', 'Text'], ['form', 'Form'], ['button', 'Button link'], ['link', 'Outline link'], ['image', 'Image'], ['products', 'Product grid']];
 
@@ -119,7 +120,7 @@ export function AppEditor({ id, tab = 'build' }) {
             {def.elements.map((e, i) => (
               <div key={e.id} className="panel" style={{ padding: 8, marginBottom: 6 }}>
                 <div className="row"><b>{ELEMENTS.find(([t]) => t === e.type)?.[1]}</b>
-                  <span className="right"><button className="small" disabled={i === 0} onClick={() => moveEl(i, -1)}>↑</button><button className="small" disabled={i === def.elements.length - 1} onClick={() => moveEl(i, 1)}>↓</button><button className="small danger" onClick={() => update({ elements: def.elements.filter((x) => x.id !== e.id) })}>✕</button></span></div>
+                  <span className="right"><button className="small" disabled={i === 0} onClick={() => moveEl(i, -1)}>↑</button><button className="small" disabled={i === def.elements.length - 1} onClick={() => moveEl(i, 1)}>↓</button><button className="small danger" onClick={() => update({ elements: def.elements.filter((x) => x.id !== e.id) })}><Icon name="close" size={14} /></button></span></div>
                 {['heading', 'text'].includes(e.type) && (e.type === 'text' ? <textarea rows={2} value={e.text || ''} onChange={(ev) => setEl(e.id, { text: ev.target.value })} /> : <input value={e.text || ''} onChange={(ev) => setEl(e.id, { text: ev.target.value })} />)}
                 {['button', 'link'].includes(e.type) && (<><input placeholder="Label" value={e.label || ''} onChange={(ev) => setEl(e.id, { label: ev.target.value })} /><input style={{ marginTop: 4 }} placeholder="https://" value={e.url || ''} onChange={(ev) => setEl(e.id, { url: ev.target.value })} /></>)}
                 {e.type === 'image' && <input placeholder="Image URL" value={e.src || ''} onChange={(ev) => setEl(e.id, { src: ev.target.value })} />}
@@ -146,7 +147,7 @@ export function AppEditor({ id, tab = 'build' }) {
                     <div className="opt-row">
                       <input value={p.name} placeholder="Name" onChange={(e) => update({ products: def.products.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)) })} />
                       <input type="number" style={{ width: 90 }} value={p.price} onChange={(e) => update({ products: def.products.map((x, j) => (j === i ? { ...x, price: Number(e.target.value) } : x)) })} />
-                      <button className="small danger" onClick={() => update({ products: def.products.filter((_, j) => j !== i) })}>✕</button>
+                      <button className="small danger" onClick={() => update({ products: def.products.filter((_, j) => j !== i) })}><Icon name="close" size={14} /></button>
                     </div>
                     <input value={p.description} placeholder="Description" onChange={(e) => update({ products: def.products.map((x, j) => (j === i ? { ...x, description: e.target.value } : x)) })} />
                     <input style={{ marginTop: 4 }} value={p.image} placeholder="Image URL" onChange={(e) => update({ products: def.products.map((x, j) => (j === i ? { ...x, image: e.target.value } : x)) })} />

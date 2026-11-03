@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api.js';
+import Logo from '../components/Logo.jsx';
 
 // "Sign up with Google / Microsoft" buttons, shown only for providers configured in .env.
 export function OAuthButtons({ verb = 'Sign up' }) {
@@ -41,7 +42,7 @@ export default function Auth({ mode = 'login', error: initialError = '', onDone 
 
   return (
     <div className="auth-page">
-      <a href="#/" className="brand auth-brand"><span className="logo">W</span>WpForms</a>
+      <Logo />
       <form className="auth-card" onSubmit={submit}>
         <h1>{signup ? 'Create your free account' : 'Welcome back'}</h1>
         <p className="muted" style={{ marginTop: -4 }}>{signup ? 'Build forms, collect payments and automate approvals.' : 'Log in to your workspace.'}</p>
@@ -53,9 +54,9 @@ export default function Auth({ mode = 'login', error: initialError = '', onDone 
         <input id="au-pass" type="password" value={form.password} onChange={set('password')} required minLength={signup ? 8 : undefined} autoComplete={signup ? 'new-password' : 'current-password'} />
         {signup && <p className="hint" style={{ margin: '6px 0 0' }}>At least 8 characters.</p>}
         {error && <p className="error" role="alert">{error}</p>}
-        <button className="primary" style={{ width: '100%', minHeight: 44, marginTop: 16 }} disabled={busy}>{busy ? 'Please wait…' : signup ? 'Sign up for free' : 'Log in'}</button>
+        <button className="primary" style={{ width: '100%', minHeight: 40, marginTop: 18 }} disabled={busy}>{busy ? 'Please wait…' : signup ? 'Sign up for free' : 'Log in'}</button>
         <p className="hint" style={{ marginTop: 16, textAlign: 'center' }}>
-          {signup ? <>Already have an account? <a href="#/login">Log in</a></> : <>No account yet? <a href="#/signup">Sign up for free</a></>}
+          {signup ? <>Already have an account? <a className="link" href="#/login">Log in</a></> : <>No account yet? <a className="link" href="#/signup">Sign up</a></>}
         </p>
       </form>
     </div>

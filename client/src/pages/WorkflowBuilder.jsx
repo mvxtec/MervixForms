@@ -6,12 +6,9 @@ import { navigate } from '../router.js';
 import { WF_ELEMENTS, WF_BY_KEY, WF_GROUPS, newStep, stepId } from '@shared/workflowElements.js';
 import { INTEGRATIONS } from '@shared/integrations.js';
 import { CONDITION_OPS } from '@shared/logic.js';
-import Icon from '../components/Icon.jsx';
+import Icon, { integrationIcon } from '../components/Icon.jsx';
 import RichText from '../components/RichText.jsx';
 
-const GROUP_COLOR = { Basic: '#0f766e', Data: '#0369a1', Payment: '#15803d', Logic: '#7c3aed', AI: '#db2777', Notifications: '#ea580c' };
-const colorOf = (type) => GROUP_COLOR[WF_BY_KEY[type]?.group] || '#57534e';
-const initials = (s) => s.replace(/[^\w\s/&]/g, '').split(/[\s/&]+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
 
 // ── Tree helpers. A location `loc` points at a list: [] is the main list, [i, b] is branch b of step i, etc. ──
 function listAt(steps, loc) {
@@ -64,7 +61,7 @@ function StepList({ steps, loc, ctx }) {
           <div key={s.id} className="wfc-item">
             <div className={`wfc-node ${ctx.selected === s.id ? 'selected' : ''}`} role="button" tabIndex={0} aria-pressed={ctx.selected === s.id}
               onClick={() => ctx.setSelected(s.id)} onKeyDown={(ev) => { if (ev.key === 'Enter') ctx.setSelected(s.id); }}>
-              <span className="wfc-icon" style={{ background: colorOf(s.type) }} aria-hidden="true">{initials(e?.label || s.type)}</span>
+              <span className="wfc-icon" aria-hidden="true"><Icon name={s.type} size={18} /></span>
               <span className="grow" style={{ minWidth: 0 }}>
                 <b>{e?.label || s.type}</b>
                 <span className="hint" style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{summary(s, ctx.fields)}</span>
@@ -109,10 +106,10 @@ function ElementPanel({ onAdd }) {
             <div className="palette-list">
               {items.map((e) => (
                 <button key={e.key} className={`item ${e.ready ? '' : 'soon'}`} disabled={!e.ready} title={e.ready ? `Add ${e.label}` : e.reason} onClick={() => onAdd(e.key)}>
-                  <span className="ico" style={e.ready ? { background: GROUP_COLOR[g], color: '#fff' } : undefined} aria-hidden="true">{initials(e.label)}</span>
+                  <span className="ico" aria-hidden="true"><Icon name={e.key} size={16} /></span>
                   <span className="grow">{e.label}</span>
-                  {e.isNew && e.ready && <span className="pill teal" style={{ fontSize: 10, padding: '0 6px' }}>New</span>}
-                  {!e.ready && <span className="pill" style={{ fontSize: 10, padding: '0 6px' }}>Soon</span>}
+                  {e.isNew && e.ready && <span className="tag">New</span>}
+                  {!e.ready && <span className="tag">Soon</span>}
                 </button>
               ))}
             </div>
@@ -124,9 +121,9 @@ function ElementPanel({ onAdd }) {
             const step = { webhook: 'webhook', slack: 'slack', teams: 'teams' }[x.kind];
             return (
               <button key={x.key} className={`item ${step ? '' : 'soon'}`} disabled={!step} title={step ? `Add ${x.name} (via URL)` : 'Coming soon — use the Webhook step with Zapier, Make or n8n'} onClick={() => onAdd(step, x)}>
-                <span className="ico" style={step ? { background: '#0e7490', color: '#fff' } : undefined} aria-hidden="true">{initials(x.name)}</span>
+                <span className="ico" aria-hidden="true"><Icon name={integrationIcon(x)} size={16} /></span>
                 <span className="grow">{x.name}</span>
-                {!step && <span className="pill" style={{ fontSize: 10, padding: '0 6px' }}>Soon</span>}
+                {!step && <span className="tag">Soon</span>}
               </button>
             );
           })}
@@ -181,7 +178,7 @@ function StepSettings({ step, set, fields }) {
           {(step.rules || []).map((r, i) => (
             <div key={i} className="panel" style={{ padding: 10, marginTop: 8 }}>
               <div className="opt-row"><input aria-label="Branch name" value={r.label} onChange={(ev) => set({ rules: step.rules.map((x, j) => (j === i ? { ...x, label: ev.target.value } : x)), branches: step.branches.map((b, j) => (j === i ? { ...b, label: ev.target.value } : b)) })} />
-                <button className="small danger" aria-label="Remove branch" disabled={step.rules.length < 2} onClick={() => set({ rules: step.rules.filter((_, j) => j !== i), branches: step.branches.filter((_, j) => j !== i) })}>✕</button></div>
+                <button className="small danger" aria-label="Remove branch" disabled={step.rules.length < 2} onClick={() => set({ rules: step.rules.filter((_, j) => j !== i), branches: step.branches.filter((_, j) => j !== i) })}><Icon name="close" size={14} /></button></div>
               <div className="grid2" style={{ marginTop: 6 }}>
                 <select aria-label="Field" value={r.field} onChange={(ev) => set({ rules: step.rules.map((x, j) => (j === i ? { ...x, field: ev.target.value } : x)) })}><option value="">Field…</option>{inputs.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}</select>
                 <select aria-label="State" value={r.op} onChange={(ev) => set({ rules: step.rules.map((x, j) => (j === i ? { ...x, op: ev.target.value } : x)) })}>{Object.entries(CONDITION_OPS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
@@ -254,7 +251,7 @@ function Runs({ wf }) {
                 <span className={`pill ${pill[r.status]}`}>{r.status}</span><span className="pill">{r.label}</span>
                 {r.current && r.status === 'waiting' && <span className="hint">at {WF_BY_KEY[r.current]?.label}{r.resume_at ? ` until ${fmtDate(r.resume_at)}` : ''}</span>}
                 <span className="right row">
-                  {r.status === 'waiting' && <button className="small" onClick={(e) => { e.preventDefault(); act(r.id, 'resume'); }}>Resume</button>}
+                  {r.status === 'waiting' && !['approval', 'teamApproval', 'task'].includes(r.current) && <button className="small" onClick={(e) => { e.preventDefault(); act(r.id, 'resume'); }}>Resume</button>}
                   {['running', 'waiting'].includes(r.status) && <button className="small danger" onClick={(e) => { e.preventDefault(); act(r.id, 'cancel'); }}>Cancel</button>}
                   <button className="small" onClick={(e) => { e.preventDefault(); act(r.id, 'restart'); }}>Restart</button>
                   <a className="btn small" href={`#/track/${r.token}`} target="_blank" rel="noreferrer">Tracking page</a>

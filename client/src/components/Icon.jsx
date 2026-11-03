@@ -1,34 +1,89 @@
-// Small stroke icon set (Lucide-style paths) so the app has no icon dependency.
-const PATHS = {
-  forms: <><rect x="4" y="3" width="16" height="18" rx="2" /><path d="M8 8h8M8 12h8M8 16h5" /></>,
-  inbox: <><path d="M22 12h-6l-2 3h-4l-2-3H2" /><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" /></>,
-  sign: <><path d="M20 19.5V21H4" /><path d="M3 17c3-3 4.5 0 6-2s1-5 3-5 1.5 4 4 4 2.5-2 4-2" /></>,
-  apps: <><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></>,
-  account: <><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" /></>,
-  plus: <path d="M12 5v14M5 12h14" />,
-  search: <><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></>,
-  back: <path d="m15 18-6-6 6-6" />,
-  undo: <><path d="M9 14 4 9l5-5" /><path d="M4 9h11a5 5 0 0 1 0 10h-3" /></>,
-  redo: <><path d="m15 14 5-5-5-5" /><path d="M20 9H9a5 5 0 0 0 0 10h3" /></>,
-  eye: <><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" /></>,
-  external: <><path d="M14 4h6v6" /><path d="M10 14 20 4" /><path d="M20 14v6H4V4h6" /></>,
-  sparkles: <><path d="m12 3 1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z" /><path d="M19 17v4M17 19h4" /></>,
-  copy: <><rect x="8" y="8" width="13" height="13" rx="2" /><path d="M4 16V5a2 2 0 0 1 2-2h11" /></>,
-  trash: <><path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M6 6l1 14h10l1-14" /></>,
-  up: <path d="m18 15-6-6-6 6" />,
-  down: <path d="m6 9 6 6 6-6" />,
-  logic: <><circle cx="6" cy="6" r="2.5" /><circle cx="18" cy="18" r="2.5" /><path d="M6 8.5v3a4 4 0 0 0 4 4h5.5" /></>,
-  star: <path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1 6.2L12 17.3 6.5 20.2l1-6.2L3 9.6l6.2-.9z" />,
-  folder: <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />,
-  check: <path d="m5 12 5 5 9-10" />,
-  lock: <><rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></>,
-  logout: <><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="m16 17 5-5-5-5" /><path d="M21 12H9" /></>,
+// One icon set for the whole app (Phosphor, regular weight). Components ask for icons by name;
+// fields, widgets, workflow steps and integrations map to names through the helpers below.
+import {
+  ArrowArcLeft, ArrowArcRight, ArrowLeft, ArrowSquareOut, ArrowsDownUp, ArrowsLeftRight, At, Bank, Barcode, Bell, Calculator, CalendarBlank,
+  CalendarCheck, CaretDown, CaretRight, CaretUp, ChartBar, ChatCircleText, ChatsCircle, Check, CheckCircle, CheckSquare, Clock, CloudArrowUp,
+  Code, Copy, CreditCard, CurrencyInr, Database, DotsSixVertical, DotsThree, Envelope, EnvelopeSimple, Eye, EyeSlash, FileArrowDown, FilePdf,
+  FileText, Fingerprint, Flag, FlowArrow, Folder, FolderSimple, Funnel, GearSix, Globe, GitBranch, GridFour, Hash, Heart, HourglassMedium,
+  IdentificationCard, Image, Info, Key, Lightning, Link, ListBullets, ListChecks, Lock, MagnifyingGlass, MapPin, Minus, NumberCircleOne, Palette,
+  Paragraph, PaperPlaneTilt, PencilSimple, Phone, Play, Plus, PlusMinus, Pause, QrCode, Question, RadioButton, Repeat, Robot, Rows, Scales,
+  ShieldCheck, SignOut, Signature, SlidersHorizontal, Sparkle, SquaresFour, Star, Stop, Storefront, Table, Tag, TextAa, TextAlignLeft,
+  TextHOne, TextT, Timer, Trash, TreeStructure, User, UserCircle, Users, Warning, WebhooksLogo, X, SlackLogo, MicrosoftTeamsLogo, DiscordLogo,
+  WhatsappLogo, GoogleLogo, StripeLogo, PaypalLogo, DropboxLogo, GoogleDriveLogo, NotionLogo, GithubLogo, FigmaLogo,
+  MicrosoftExcelLogo, MicrosoftOutlookLogo, LinkedinLogo, FacebookLogo, InstagramLogo, YoutubeLogo, TwitterLogo, AppleLogo, AndroidLogo,
+  ShoppingCart, Receipt, Ticket, Megaphone, Kanban, HeartStraight, Camera, Microphone, VideoCamera, Gauge, Smiley, Sliders,
+  MapTrifold, Translate, Browsers, Archive, Tray, ListDashes, Command, House, Buildings, Student, FirstAid, Briefcase, Cube, Plugs,
+} from '@phosphor-icons/react';
+
+const MAP = {
+  // App chrome
+  forms: FileText, inbox: Tray, sign: Signature, apps: SquaresFour, account: UserCircle, plus: Plus, search: MagnifyingGlass, back: ArrowLeft,
+  undo: ArrowArcLeft, redo: ArrowArcRight, eye: Eye, eyeOff: EyeSlash, external: ArrowSquareOut, sparkles: Sparkle, copy: Copy, trash: Trash,
+  up: CaretUp, down: CaretDown, right: CaretRight, logic: GitBranch, star: Star, folder: FolderSimple, check: Check, lock: Lock, logout: SignOut,
+  workflow: FlowArrow, store: Storefront, settings: GearSix, archive: Archive, tag: Tag, users: Users, user: User, close: X, more: DotsThree,
+  drag: DotsSixVertical, filter: Funnel, sort: ArrowsDownUp, bell: Bell, mail: EnvelopeSimple, chart: ChartBar, table: Table, pdf: FilePdf,
+  download: FileArrowDown, link: Link, code: Code, globe: Globe, key: Key, bolt: Lightning, info: Info, warning: Warning, help: Question,
+  edit: PencilSimple, palette: Palette, translate: Translate, robot: Robot, plug: Plugs, home: House, task: ListChecks, success: CheckCircle,
+  card: CreditCard, rupee: CurrencyInr, send: PaperPlaneTilt, play: Play, pause: Pause, stop: Stop, command: Command, browsers: Browsers,
+  kanban: Kanban, widget: Cube, menu: ListDashes, shield: ShieldCheck, chat: ChatCircleText,
+
+  // Form fields
+  heading: TextHOne, paragraph: Paragraph, image: Image, divider: Minus, pagebreak: Rows, section: CaretRight, text: TextT, textarea: TextAlignLeft,
+  email: At, phone: Phone, url: Link, number: Hash, fullname: User, address: MapPin, date: CalendarBlank, time: Clock, dropdown: CaretDown,
+  radio: RadioButton, checkbox: CheckSquare, file: CloudArrowUp, rating: Star, scale: Gauge, slider: SlidersHorizontal, matrix: Table,
+  yesno: ArrowsLeftRight, signature: Signature, appointment: CalendarCheck, calculation: Calculator, hidden: EyeSlash, terms: ShieldCheck,
+  captcha: Fingerprint, fillblank: TextAa, spinner: PlusMinus, products: ShoppingCart, donation: HeartStraight, subscription: Repeat,
+
+  // Workflow steps
+  approval: CheckCircle, teamApproval: Users, approveSign: Signature, signDocument: Signature, sendPdf: FilePdf, webhook: WebhooksLogo,
+  scheduledEmail: Timer, trackingEmail: EnvelopeSimple, flowReport: ChartBar, qrCode: QrCode, getData: Database, createEntry: Database,
+  updateEntry: Database, paymentForm: CreditCard, requestPayment: Receipt, verifyPayment: CreditCard, paymentAssistant: Robot, ifElse: GitBranch,
+  branch: TreeStructure, setStatus: Flag, forEach: Repeat, split: GitBranch, wait: HourglassMedium, end: Stop, automateTask: Robot,
+  idGenerator: Barcode, updateValue: PencilSimple, customPrompt: ChatsCircle, summarize: ListBullets, calculate: Calculator, sentiment: Smiley,
+  categorize: Tag, extractFromFile: FileText, sms: ChatCircleText, whatsapp: WhatsappLogo, slack: SlackLogo, push: Bell, teams: MicrosoftTeamsLogo,
+
+  // Brands (integrations); anything else falls back to its category icon
+  discord: DiscordLogo, google: GoogleLogo, sheets: Table, stripe: StripeLogo, paypal: PaypalLogo, dropbox: DropboxLogo, googleDrive: GoogleDriveLogo,
+  notion: NotionLogo, github: GithubLogo, figma: FigmaLogo, excel: MicrosoftExcelLogo, outlook: MicrosoftOutlookLogo,
+  linkedin: LinkedinLogo, facebook: FacebookLogo, instagram: InstagramLogo, youtube: YoutubeLogo, twitter: TwitterLogo, apple: AppleLogo,
+  android: AndroidLogo, webhooks: WebhooksLogo, whatsappBusiness: WhatsappLogo, gmail: Envelope,
+  // Misc used by widget categories and templates
+  camera: Camera, mic: Microphone, video: VideoCamera, map: MapTrifold, bank: Bank, id: IdentificationCard, ticket: Ticket, megaphone: Megaphone,
+  building: Buildings, student: Student, health: FirstAid, briefcase: Briefcase, grid: GridFour, one: NumberCircleOne, scales: Scales, heart: Heart,
+  sliders: Sliders, folderFull: Folder, list: ListBullets,
 };
 
-export default function Icon({ name, size = 16, ...rest }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...rest}>
-      {PATHS[name]}
-    </svg>
-  );
+export default function Icon({ name, size = 16, fill, weight, ...rest }) {
+  const C = MAP[name] || Cube;
+  // `fill="currentColor"` (used for active stars) switches to Phosphor's filled weight.
+  return <C size={size} weight={weight || (fill && fill !== 'none' ? 'fill' : 'regular')} aria-hidden="true" {...rest} />;
 }
+
+export const hasIcon = (name) => !!MAP[name];
+
+const WIDGET_CATEGORY_ICON = {
+  Popular: 'star', 'Choices & selection': 'checkbox', 'Text & validation': 'text', 'Date & time': 'date', 'Media & embeds': 'image',
+  'Display & layout': 'grid', Calculators: 'calculation', 'Capture & location': 'camera', 'Lists & data': 'list', Pickers: 'sliders',
+  'Tracking & metadata': 'chart', 'Buttons & social': 'link',
+};
+// Widgets: a specific icon when the key or kind names one, otherwise the category's.
+export function widgetIcon(w) {
+  const k = `${w.key} ${w.kind || ''} ${w.label}`.toLowerCase();
+  const rules = [
+    [/aadhaar|pan\b|gstin|passport|kyc|\bid\b|verification/, 'id'], [/iban|ifsc|bank|upi|swift/, 'bank'], [/map|location|geo|address/, 'map'],
+    [/camera|photo|selfie|webcam/, 'camera'], [/audio|voice|record|mic/, 'mic'], [/video|youtube|vimeo/, 'video'], [/qr|barcode/, 'qrCode'],
+    [/sign/, 'signature'], [/date|calendar|day/, 'date'], [/time|clock|countdown|timer/, 'time'], [/email|mail/, 'email'], [/phone|mobile|whatsapp|sms/, 'phone'],
+    [/rating|star|nps|emoji|feedback/, 'rating'], [/slider|range/, 'slider'], [/color|colour/, 'palette'], [/price|currency|rupee|amount|inr/, 'rupee'],
+    [/calc|formula|age|bmi|loan|emi/, 'calculation'], [/file|upload|attach/, 'file'], [/table|grid|matrix|list/, 'table'], [/image|gallery|logo/, 'image'],
+    [/link|url|button/, 'link'], [/text|heading|paragraph|quote/, 'text'], [/translate|language/, 'translate'], [/tag|chip/, 'tag'],
+    [/check|consent|terms|agree/, 'checkbox'], [/dropdown|select|picker|choice/, 'dropdown'], [/unique|token|code/, 'code'], [/donat/, 'donation'],
+  ];
+  return rules.find(([re]) => re.test(k))?.[1] || WIDGET_CATEGORY_ICON[w.category] || 'widget';
+}
+
+const INTEGRATION_CATEGORY_ICON = {
+  'Automation platforms': 'bolt', Communication: 'chat', 'Spreadsheets & data': 'table', Payments: 'card', 'CRM & sales': 'users',
+  'E-mail marketing': 'mail', 'Storage & files': 'folder', 'Productivity & projects': 'kanban', 'Calendar & meetings': 'date', Support: 'help',
+  Healthcare: 'health', Other: 'plug',
+};
+export const integrationIcon = (x) => (hasIcon(x.key) && !['sheets', 'tables', 'boards', 'sms'].includes(x.key) ? x.key : INTEGRATION_CATEGORY_ICON[x.category] || 'plug');

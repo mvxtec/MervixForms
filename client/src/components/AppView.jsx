@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { api } from '../api.js';
+import Icon from './Icon.jsx';
 
 const money = (currency, n) => `${currency} ${Number(n || 0).toFixed(2)}`;
 
@@ -40,12 +41,12 @@ export default function AppView({ appId, kind, def, forms = {}, live, branding }
           <div className="panel" style={{ textAlign: 'center', padding: 30 }}><h2>✓</h2><p>{done.thankYou}</p><button onClick={() => { setDone(null); setCheckout(false); }}>Back</button></div>
         ) : openForm ? (
           <div>
-            <button className="small" onClick={() => setOpenForm(null)} style={{ marginBottom: 8 }}>← Back</button>
+            <button className="small" onClick={() => setOpenForm(null)} style={{ marginBottom: 8 }}><Icon name="back" size={14} />Back</button>
             <iframe title="form" src={`/embed/${openForm}`} style={{ width: '100%', minHeight: 640, border: 0, borderRadius: 8, background: '#fff' }} />
           </div>
         ) : checkout ? (
           <div className="panel">
-            <button className="small" onClick={() => setCheckout(false)}>← Back to cart</button>
+            <button className="small" onClick={() => setCheckout(false)}><Icon name="back" size={14} />Back to cart</button>
             <h2 style={{ marginTop: 10 }}>Checkout</h2>
             {items.map((i) => <div key={i.id} className="row"><span>{i.name} × {i.qty}</span><span className="right">{money(def.currency, i.price * i.qty)}</span></div>)}
             <div className="row" style={{ fontWeight: 700, borderTop: '1px solid var(--border)', marginTop: 6, paddingTop: 6 }}><span>Total</span><span className="right">{money(def.currency, total)}</span></div>

@@ -26,7 +26,19 @@ const { default: workspace } = await import('./routes/workspace.js');
 const { startScheduler } = await import('./workflows.js');
 startScheduler();
 
-// Async route handlers must never take the process down.
+// Express 4 ignores rejected promises from async handlers, which leaves the request hanging.
+// Route them to the error handler instead (what express-async-errors does).
+const { default: Layer } = await import('express/lib/router/layer.js');
+const handle = Layer.prototype.handle_request;
+Layer.prototype.handle_request = function (req, res, next) {
+  if (this.handle.length > 3) return handle.call(this, req, res, next);
+  try {
+    const out = this.handle(req, res, next);
+    if (out && typeof out.catch === 'function') out.catch(next);
+  } catch (e) { next(e); }
+};
+
+// Background work must never take the process down.
 process.on('unhandledRejection', (e) => console.error('unhandledRejection', e));
 
 export const app = express();
@@ -46,8 +58,11 @@ app.use('/api', forms);
 app.use('/api', submissions);
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));
 app.use((err, req, res, next) => {
-  console.error(err);
-  res.status(err.status || 500).json({ error: err.message || 'Server error' });
+  const status = err.status || err.statusCode || 500;
+  if (status >= 500) console.error(err);
+  if (res.headersSent) return next(err);
+  // Internal error text is for the log, not the client.
+  res.status(status).json({ error: status >= 500 ? 'Something went wrong on our side. Please try again.' : err.message });
 });
 
 // Serve the built client (npm run build). /f/:id is the public form route.

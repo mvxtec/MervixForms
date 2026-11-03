@@ -246,7 +246,8 @@ export function validateField(f, v, state) {
     case 'widget':
       return validateWidget(f, v, state.values);
     case 'captcha':
-      if (Number(v?.a) + Number(v?.b) !== Number(v?.answer)) return 'Captcha answer is incorrect.';
+      if (!v?.token || String(v?.answer ?? '').trim() === '') return 'Please answer the question.';
+      if (Number(v.a) + Number(v.b) !== Number(v.answer)) return 'That answer is not right.';
       break;
   }
   return null;

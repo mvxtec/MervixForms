@@ -41,7 +41,7 @@ export function TemplatesGallery({ formId, forms, onClose }) {
   return (
     <div className="modal-back" onClick={onClose}>
       <div className="modal wide" role="dialog" aria-modal="true" aria-labelledby="tpl-title" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 1100 }}>
-        <div className="row"><h2 id="tpl-title" style={{ margin: 0 }}>Workflow templates</h2><button className="right icon-btn ghost" aria-label="Close" onClick={onClose}>✕</button></div>
+        <div className="row"><h2 id="tpl-title" style={{ margin: 0 }}>Workflow templates</h2><button className="right icon-btn ghost" aria-label="Close" onClick={onClose}><Icon name="close" size={14} /></button></div>
         <p className="hint">Start from a ready-made flow and adapt it. Each template is fully editable.</p>
         <div className="row wrap" style={{ marginBottom: 12 }}>
           <label className="search" style={{ flex: '1 1 240px' }}><Icon name="search" /><span className="sr-only">Search templates</span><input type="search" placeholder="Search in all workflow templates" value={q} onChange={(e) => setQ(e.target.value)} /></label>
@@ -96,7 +96,7 @@ export default function WorkflowsPane({ formId, def, update, me }) {
       <div className="starter-grid">
         {STARTERS.map((st) => (
           <button key={st.key} className="type-card starter" disabled={st.soon} onClick={() => start(st)}>
-            <span className="grow" style={{ textAlign: 'left' }}><b>{st.title}</b>{st.soon && <span className="pill" style={{ marginLeft: 6, fontSize: 10, padding: '0 6px' }}>Soon</span>}<span className="hint" style={{ display: 'block' }}>{st.desc}</span></span>
+            <span className="grow" style={{ textAlign: 'left' }}><b>{st.title}</b>{st.soon && <span className="tag">Soon</span>}<span className="hint" style={{ display: 'block' }}>{st.desc}</span></span>
           </button>
         ))}
         <button className="type-card starter" onClick={() => setTemplates(true)}>

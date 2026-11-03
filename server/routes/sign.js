@@ -67,7 +67,8 @@ r.put('/sign/docs/:id', requireAuth, requireRole('editor'), (req, res) => {
   if (d.status !== 'draft') return res.status(409).json({ error: 'Only drafts can be edited.' });
   const { title, message, fields = [], signers = [] } = req.body || {};
   if (!Array.isArray(signers) || signers.length > 10) return res.status(400).json({ error: 'Up to 10 signers' });
-  const clean = fields.filter((f) => FIELD_TYPES.includes(f.type)).map((f) => ({
+  if (!Array.isArray(fields)) return res.status(400).json({ error: 'fields must be a list' });
+  const clean = fields.filter((f) => f && typeof f === 'object' && FIELD_TYPES.includes(f.type)).map((f) => ({
     id: String(f.id).slice(0, 40), type: f.type, page: Math.max(0, Math.floor(f.page)), signer: Math.max(0, Math.min(signers.length - 1, Math.floor(f.signer || 0))),
     x: +f.x, y: +f.y, w: +f.w, h: +f.h, required: f.required !== false, label: String(f.label || '').slice(0, 60),
   }));

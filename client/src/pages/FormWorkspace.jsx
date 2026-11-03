@@ -130,7 +130,7 @@ export default function FormWorkspace({ id, tab, sid }) {
           <div className="modal wide" style={{ padding: 0, overflow: 'hidden' }} onClick={(e) => e.stopPropagation()}>
             <div className="row" style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)' }}>
               <b>Preview</b><span className="hint">Logic, validation and calculations are live. Nothing is submitted.</span>
-              <button className="right icon-btn ghost" onClick={() => setPreview(false)} aria-label="Close preview">✕</button>
+              <button className="right icon-btn ghost" onClick={() => setPreview(false)} aria-label="Close preview"><Icon name="close" size={14} /></button>
             </div>
             <FormRenderer key={JSON.stringify(def).length} def={def} formId={id} mode="preview" branding={me.plan.branding} />
           </div>

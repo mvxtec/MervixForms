@@ -247,3 +247,6 @@ export const parseSub = (row) => row && ({
 
 // Stars on the unified workspace list.
 for (const t of ['workflows', 'apps', 'sign_docs']) addColumn(t, 'favorite', 'favorite INTEGER NOT NULL DEFAULT 0');
+
+// Sequential Unique ID widget numbers; never reused after a submission is deleted.
+db.exec(`CREATE TABLE IF NOT EXISTS form_counters (form_id TEXT NOT NULL, field_id TEXT NOT NULL, n INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (form_id, field_id))`);

@@ -10,7 +10,12 @@ export default function Approve({ sid, email, token }) {
   const [note, setNote] = useState('');
   const load = () => api(base).then(setD).catch((e) => setErr(e.message));
   useEffect(() => { load(); }, []);
-  const decide = async (decision) => { await api(base, { method: 'POST', body: { decision, note } }); load(); };
+  const [busy, setBusy] = useState(false);
+  const decide = async (decision) => {
+    setBusy(true); setErr('');
+    try { await api(base, { method: 'POST', body: { decision, note } }); } catch (e) { setErr(e.message); }
+    setBusy(false); load();
+  };
 
   return (
     <div className="page" style={{ maxWidth: 720 }}>
@@ -30,8 +35,8 @@ export default function Approve({ sid, email, token }) {
             <div style={{ marginTop: 16 }}>
               <textarea rows={2} placeholder="Optional note" value={note} onChange={(e) => setNote(e.target.value)} />
               <div className="row" style={{ marginTop: 8 }}>
-                <button className="primary" onClick={() => decide('approved')}>Approve</button>
-                <button className="danger" onClick={() => decide('rejected')}>Reject</button>
+                <button className="primary" disabled={busy} onClick={() => decide('approved')}>Approve</button>
+                <button className="danger" disabled={busy} onClick={() => decide('rejected')}>Reject</button>
               </div>
             </div>
           ) : (

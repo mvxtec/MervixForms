@@ -5,6 +5,7 @@ import { sanitizeHtml, escapeHtml, looksLikeHtml } from '../sanitize.js';
 import { widgetKind } from '@shared/widgets.js';
 import { FieldInput, DisplayBlock } from './Fields.jsx';
 import { api } from '../api.js';
+import Icon from './Icon.jsx';
 
 export function themeStyle(theme = {}) {
   return {
@@ -159,7 +160,7 @@ export default function FormRenderer({ def, formId, mode = 'live', branding, ini
 
   const saveDraft = async () => {
     if (mode !== 'live') return;
-    const r = await api(`/public/forms/${formId}/draft`, { method: 'POST', body: { token: draft.token, values: raw } });
+    const r = await api(`/public/forms/${formId}/draft`, { method: 'POST', body: { token: draft.token, values: raw, password } });
     setDraft(r);
   };
 
@@ -189,7 +190,7 @@ export default function FormRenderer({ def, formId, mode = 'live', branding, ini
               <div key={f.id} className={`wf-field ${errors[f.id] ? 'has-err' : ''}`} id={`field-${f.id}`}>
                 {f.type === 'section' ? (
                   <button type="button" className="wg-section-toggle" aria-expanded={!collapsed.has(f.id)} onClick={() => setCollapsed((c) => { const n = new Set(c); n.has(f.id) ? n.delete(f.id) : n.add(f.id); return n; })}>
-                    <span aria-hidden="true">{collapsed.has(f.id) ? '▸' : '▾'}</span>
+                    <Icon name={collapsed.has(f.id) ? 'right' : 'down'} size={14} />
                     <span><span style={{ display: 'block', fontWeight: 600, fontSize: 18 }}>{f.label}</span>{f.subheading && <span className="wf-desc" style={{ display: 'block' }}>{f.subheading}</span>}</span>
                   </button>
                 ) : isDisplay(f) ? <DisplayBlock f={f} /> : f.type === 'hidden' ? null : (

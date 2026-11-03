@@ -1,6 +1,7 @@
 // Builder settings for widgets and the newer basic elements (donation, subscription, fill in the blank…).
 import { isDisplay } from '@shared/fields.js';
 import { WIDGET_BY_KEY, widgetSettings, CALC_INPUTS } from '@shared/widgets.js';
+import Icon from './Icon.jsx';
 
 const CURRENCIES = ['INR', 'USD', 'EUR', 'GBP', 'AED', 'SGD', 'AUD', 'CAD', 'JPY'];
 const toLines = (x) => (Array.isArray(x) ? x.join('\n') : x || '');
@@ -30,7 +31,7 @@ function ColumnsEditor({ cols = [], onChange }) {
             <select aria-label={`Column ${i + 1} type`} style={{ width: 120 }} value={c.type} onChange={(e) => set(i, { type: e.target.value })}>
               {['text', 'number', 'dropdown', 'date', 'time'].map((t) => <option key={t}>{t}</option>)}
             </select>
-            <button className="small danger" aria-label={`Remove column ${i + 1}`} onClick={() => onChange(cols.filter((_, j) => j !== i))}>✕</button>
+            <button className="small danger" aria-label={`Remove column ${i + 1}`} onClick={() => onChange(cols.filter((_, j) => j !== i))}><Icon name="close" size={14} /></button>
           </div>
           {c.type === 'dropdown' && <input aria-label="Dropdown options" placeholder="Options, comma separated" value={(c.options || []).join(', ')} onChange={(e) => set(i, { options: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) })} />}
         </div>
@@ -52,7 +53,7 @@ function RosterEditor({ roster = [], onChange }) {
           </div>
           <div className="opt-row" style={{ marginTop: 6 }}>
             <input aria-label="Employee name" placeholder="Name" value={r.name || ''} onChange={(e) => set(i, { name: e.target.value })} />
-            <button className="small danger" aria-label={`Remove ${r.id}`} onClick={() => onChange(roster.filter((_, j) => j !== i))}>✕</button>
+            <button className="small danger" aria-label={`Remove ${r.id}`} onClick={() => onChange(roster.filter((_, j) => j !== i))}><Icon name="close" size={14} /></button>
           </div>
         </div>
       ))}
@@ -125,7 +126,7 @@ export function ExtraProps({ f, set }) {
             <div key={p.id} className="panel" style={{ padding: 10, marginBottom: 6 }}>
               <div className="opt-row">
                 <input aria-label="Plan name" value={p.name} onChange={(e) => set({ plans: f.plans.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)) })} />
-                <button className="small danger" aria-label={`Remove ${p.name}`} onClick={() => set({ plans: f.plans.filter((_, j) => j !== i) })}>✕</button>
+                <button className="small danger" aria-label={`Remove ${p.name}`} onClick={() => set({ plans: f.plans.filter((_, j) => j !== i) })}><Icon name="close" size={14} /></button>
               </div>
               <div className="grid2" style={{ marginTop: 6 }}>
                 <input aria-label="Price" type="number" value={p.price} onChange={(e) => set({ plans: f.plans.map((x, j) => (j === i ? { ...x, price: Number(e.target.value) } : x)) })} />

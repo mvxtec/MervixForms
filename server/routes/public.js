@@ -15,6 +15,28 @@ import { TEMPLATES } from '../templates.js';
 
 const r = Router();
 
+// Captcha: a signed, short-lived arithmetic challenge. The answer never reaches the client in clear text
+// and each token works once.
+const CAPTCHA_SECRET = process.env.SESSION_SECRET || 'dev-secret-change-me';
+const usedCaptchas = new Map();
+const captchaSig = (answer, exp, nonce) => crypto.createHmac('sha256', CAPTCHA_SECRET).update(`${answer}.${exp}.${nonce}`).digest('base64url');
+function checkCaptcha(v) {
+  const [exp, nonce, sig] = String(v?.token || '').split('.');
+  if (!sig || Number(exp) < Date.now() || usedCaptchas.has(nonce)) return false;
+  const answer = String(Math.trunc(Number(v?.answer)));
+  const ok = sig.length === 43 && crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(captchaSig(answer, exp, nonce)));
+  if (ok) {
+    usedCaptchas.set(nonce, Number(exp));
+    for (const [k, e] of usedCaptchas) if (e < Date.now()) usedCaptchas.delete(k);
+  }
+  return ok;
+}
+r.get('/captcha', (req, res) => {
+  const a = 1 + crypto.randomInt(9), b = 1 + crypto.randomInt(9);
+  const exp = Date.now() + 30 * 60 * 1000, nonce = crypto.randomBytes(9).toString('base64url');
+  res.json({ a, b, token: `${exp}.${nonce}.${captchaSig(String(a + b), exp, nonce)}` });
+});
+
 const loadForm = (id) => parseForm(db.prepare('SELECT * FROM forms WHERE id = ?').get(id));
 const ownerOf = (form) => db.prepare('SELECT id, email, name, plan FROM users WHERE id = ?').get(form.user_id);
 
@@ -42,8 +64,8 @@ function closedReason(form, owner) {
   const plan = planOf(owner.plan);
   const usage = getUsage(owner.id);
   if (form.status !== 'enabled') return s.closedMessage || 'This form is currently disabled.';
-  if (s.closeDate && new Date(s.closeDate) < new Date()) return s.closedMessage;
-  if (s.maxSubmissions && db.prepare('SELECT COUNT(*) n FROM submissions WHERE form_id = ?').get(form.id).n >= Number(s.maxSubmissions)) return s.closedMessage;
+  if (s.closeDate && new Date(s.closeDate) < new Date()) return s.closedMessage || 'This form is closed.';
+  if (s.maxSubmissions && db.prepare('SELECT COUNT(*) n FROM submissions WHERE form_id = ?').get(form.id).n >= Number(s.maxSubmissions)) return s.closedMessage || 'This form is no longer accepting submissions.';
   if (usage.submissionsPerMonth >= plan.submissionsPerMonth || usage.totalSubmissions >= plan.totalSubmissions) return 'This form has reached its submission limit.';
   if (usage.viewsPerMonth >= plan.viewsPerMonth) return 'This form has reached its monthly view limit.';
   return null;
@@ -134,7 +156,12 @@ r.post('/forms/:id/verify-id', (req, res) => {
 
 r.post('/forms/:id/draft', (req, res) => {
   const form = loadForm(req.params.id);
-  if (!form || !form.definition.settings?.saveAndContinue) return res.status(400).json({ error: 'Drafts are disabled' });
+  if (!form || form.status === 'trashed') return res.status(404).json({ error: 'Form not found' });
+  if (!form.definition.settings?.saveAndContinue) return res.status(400).json({ error: 'Drafts are disabled' });
+  const closed = closedReason(form, ownerOf(form));
+  if (closed) return res.status(403).json({ error: closed });
+  if (form.definition.settings.password && req.body?.password !== form.definition.settings.password) return res.status(403).json({ error: 'Password required' });
+  if (req.body?.values && (typeof req.body.values !== 'object' || Array.isArray(req.body.values))) return res.status(400).json({ error: 'Invalid draft' });
   const token = /^[a-f0-9]{24}$/.test(req.body?.token || '') ? req.body.token : crypto.randomBytes(12).toString('hex');
   db.prepare(`INSERT INTO drafts (token, form_id, data) VALUES (?, ?, ?)
               ON CONFLICT(token) DO UPDATE SET data = excluded.data, updated_at = datetime('now')`).run(token, form.id, JSON.stringify(req.body?.values || {}));
@@ -168,6 +195,9 @@ r.post('/forms/:id/submit', async (req, res) => {
   for (const f of fields) if (f.type === 'hidden' && isEmpty(raw[f.id])) raw[f.id] = f.defaultValue ?? '';
 
   const { errors, state } = validateAll(form.definition, raw);
+  for (const f of fields.filter((x) => x.type === 'captcha' && !state.hidden.has(x.id))) {
+    if (!checkCaptcha(raw[f.id])) errors[f.id] = 'Please answer the question again.';
+  }
   if (Object.keys(errors).length) return res.status(422).json({ error: 'Please fix the highlighted fields.', errors });
 
   const data = {};
@@ -188,7 +218,8 @@ r.post('/forms/:id/submit', async (req, res) => {
 
   // Unique ID widgets: sequential per form, e.g. ID-00042.
   for (const f of fields.filter((x) => x.type === 'widget' && widgetKind(x) === 'uniqueId')) {
-    const n = db.prepare('SELECT COUNT(*) n FROM submissions WHERE form_id = ?').get(form.id).n + 1;
+    db.prepare('INSERT INTO form_counters (form_id, field_id, n) VALUES (?, ?, 1) ON CONFLICT(form_id, field_id) DO UPDATE SET n = n + 1').run(form.id, f.id);
+    const n = db.prepare('SELECT n FROM form_counters WHERE form_id = ? AND field_id = ?').get(form.id, f.id).n;
     data[f.id] = `${f.prefix || ''}${String(n).padStart(Number(f.digits) || 5, '0')}`;
   }
 
@@ -214,7 +245,8 @@ r.post('/forms/:id/submit', async (req, res) => {
   const payItems = [];
   for (const f of fields.filter((x) => x.type === 'products')) {
     const v = data[f.id];
-    if (!v?.items?.length) continue;
+    if (!v || !Array.isArray(v.items) || !v.items.every((i) => i && typeof i === 'object')) { delete data[f.id]; continue; }
+    if (!v.items.length) continue;
     // Products hidden by "Update Product List" conditions can't be bought.
     const catalog = Object.fromEntries((f.products || []).filter((p) => !state.hiddenProducts?.[f.id]?.has(p.id)).map((p) => [p.id, p]));
     v.items = v.items.filter((i) => catalog[i.id]).map((i) => ({ id: i.id, name: catalog[i.id].name, price: Number(catalog[i.id].price), qty: Math.max(1, Math.floor(Number(i.qty) || 1)) }));
@@ -319,6 +351,7 @@ r.post('/approval/:sid/:email/:token', (req, res) => {
   if (!ctx) return;
   const { decision, note } = req.body || {};
   if (!['approved', 'rejected'].includes(decision)) return res.status(400).json({ error: 'Invalid decision' });
+  if (ctx.sub.approval && ctx.sub.approval !== 'pending') return res.status(409).json({ error: `This submission was already ${ctx.sub.approval}.` });
   db.prepare('UPDATE submissions SET approval = ?, approval_note = ? WHERE id = ?').run(decision, note || null, ctx.sub.id);
   notifyDecision(ctx.form, ownerOf(ctx.form), ctx.sub, decision, ctx.email, note);
   res.json({ ok: true });

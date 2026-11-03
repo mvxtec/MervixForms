@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api.js';
 import { WidgetInput, WidgetDisplay } from './Widgets.jsx';
+import Icon from './Icon.jsx';
 
 const today = () => new Date().toISOString().slice(0, 10);
 // Locale-aware price (₹1,499.00 for INR); falls back to "CUR 0.00" for unknown codes.
@@ -133,7 +134,7 @@ function FileUpload({ f, value, onChange, formId, mode }) {
       {busy && <div className="hint">Uploading…</div>}
       {err && <div className="wf-err">{err}</div>}
       {files.map((x, i) => (
-        <div key={i} className="row hint">📎 {x.name} <button type="button" className="link small" onClick={() => onChange(files.filter((_, j) => j !== i))}>remove</button></div>
+        <div key={i} className="row hint"><Icon name="file" size={14} /> {x.name} <button type="button" className="link small" onClick={() => onChange(files.filter((_, j) => j !== i))}>remove</button></div>
       ))}
     </div>
   );
@@ -160,12 +161,19 @@ function Appointment({ f, value, onChange, formId, mode }) {
   );
 }
 
+// The challenge is issued and checked by the server; each one can be answered once.
 function Captcha({ value, onChange }) {
-  const q = useMemo(() => ({ a: 1 + Math.floor(Math.random() * 9), b: 1 + Math.floor(Math.random() * 9) }), []);
+  const [q, setQ] = useState(null);
+  const [failed, setFailed] = useState(false);
+  const load = () => fetch('/api/public/captcha').then((r) => r.json()).then((c) => { setQ(c); setFailed(false); onChange({ ...c, answer: '' }); }).catch(() => setFailed(true));
+  useEffect(() => { load(); }, []);
+  if (failed) return <button type="button" className="wf-btn secondary" onClick={load}>Load the question again</button>;
+  if (!q) return <span className="hint">Loading question…</span>;
   return (
     <div className="row">
       <span>What is {q.a} + {q.b}?</span>
-      <input style={{ width: 80 }} value={value?.answer || ''} onChange={(e) => onChange({ ...q, answer: e.target.value })} />
+      <input inputMode="numeric" style={{ width: 90 }} aria-label={`What is ${q.a} plus ${q.b}`} value={value?.answer || ''} onChange={(e) => onChange({ ...q, answer: e.target.value })} />
+      <button type="button" className="link small" onClick={load}>New question</button>
     </div>
   );
 }

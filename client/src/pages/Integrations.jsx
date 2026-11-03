@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { INTEGRATIONS, INTEGRATION_BY_KEY, INTEGRATION_CATEGORIES } from '@shared/integrations.js';
 import { api } from '../api.js';
-import Icon from '../components/Icon.jsx';
+import Icon, { integrationIcon } from '../components/Icon.jsx';
 
 export const SHEETS_SCRIPT = `function doPost(e) {
   var body = JSON.parse(e.postData.contents);
@@ -16,9 +16,6 @@ export const SHEETS_SCRIPT = `function doPost(e) {
   return ContentService.createTextOutput('ok');
 }`;
 
-const COLORS = ['#0f766e', '#4f46e5', '#db2777', '#ea580c', '#0369a1', '#15803d', '#7c3aed', '#b45309'];
-const tint = (key) => COLORS[[...key].reduce((s, c) => s + c.charCodeAt(0), 0) % COLORS.length];
-const initials = (n) => n.replace(/\(.*?\)/g, '').split(/[\s.-]+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
 const CONNECTABLE = ['webhook', 'slack', 'discord', 'teams', 'sheets'];
 
 function Setup({ def, update, item, formId, onBack }) {
@@ -43,7 +40,7 @@ function Setup({ def, update, item, formId, onBack }) {
     <div className="settings-pane">
       <div className="settings-title">
         <button className="icon-btn ghost" aria-label="Back to integrations" onClick={onBack}><Icon name="back" /></button>
-        <span className="settings-icon" style={{ background: tint(item.key), fontWeight: 700, fontSize: 13 }}>{initials(item.name)}</span>
+        <span className="settings-icon"><Icon name={integrationIcon(item)} size={20} /></span>
         <div><h2>{item.name}</h2><p>{item.desc}</p></div>
       </div>
       <div className="panel settings-card">
@@ -54,7 +51,7 @@ function Setup({ def, update, item, formId, onBack }) {
               <div className="opt-row" key={i}>
                 <input aria-label={`Webhook ${i + 1}`} value={u} onChange={(e) => setHooks(hooks.map((x, j) => (j === i ? e.target.value : x)))} />
                 <button className="small" onClick={() => sendTest(u)}>Test</button>
-                <button className="small danger" aria-label={`Remove webhook ${i + 1}`} onClick={() => setHooks(hooks.filter((_, j) => j !== i))}>✕</button>
+                <button className="small danger" aria-label={`Remove webhook ${i + 1}`} onClick={() => setHooks(hooks.filter((_, j) => j !== i))}><Icon name="close" size={14} /></button>
               </div>
             ))}
             <button className="small" style={{ alignSelf: 'flex-start' }} onClick={() => setHooks([...hooks, 'https://'])}><Icon name="plus" size={14} />Add webhook</button>
@@ -105,13 +102,13 @@ export default function Integrations({ def, update, formId }) {
   };
   const Card = (x) => (
     <button key={x.key} className={`integ-card ${x.kind === 'soon' ? 'soon' : ''}`} disabled={x.kind === 'soon'} onClick={() => action(x)} title={x.kind === 'soon' ? 'Coming soon' : `Set up ${x.name}`}>
-      <span className="integ-logo" style={{ background: x.kind === 'soon' ? '#a8a29e' : tint(x.key) }} aria-hidden="true">{initials(x.name)}</span>
+      <span className="integ-logo" aria-hidden="true"><Icon name={integrationIcon(x)} size={20} /></span>
       <span className="grow" style={{ minWidth: 0 }}>
-        <span className="row" style={{ fontWeight: 600 }}>{x.name}{isOn(x) && <span className="pill green" style={{ fontSize: 10, padding: '0 6px' }}>Connected</span>}</span>
+        <span className="row" style={{ fontWeight: 600 }}>{x.name}{isOn(x) && <span className="tag ok">Connected</span>}</span>
         <span className="hint" style={{ display: 'block' }}>{x.desc}</span>
       </span>
-      {x.kind === 'soon' && <span className="pill" style={{ fontSize: 10, padding: '0 6px' }}>Soon</span>}
-      {x.kind === 'payment' && <span className="pill blue" style={{ fontSize: 10, padding: '0 6px' }}>Payments tab</span>}
+      {x.kind === 'soon' && <span className="tag">Soon</span>}
+      {x.kind === 'payment' && <span className="tag">Payments tab</span>}
     </button>
   );
   return (

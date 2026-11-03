@@ -17,7 +17,7 @@ function ListEditor({ label, items, onChange }) {
         <div className="opt-row" key={i}>
           <input value={o} onChange={(e) => onChange(items.map((x, j) => (j === i ? e.target.value : x)))} />
           <button className="small" disabled={i === 0} onClick={() => { const n = [...items]; [n[i - 1], n[i]] = [n[i], n[i - 1]]; onChange(n); }}>↑</button>
-          <button className="small danger" onClick={() => onChange(items.filter((_, j) => j !== i))}>✕</button>
+          <button className="small danger" onClick={() => onChange(items.filter((_, j) => j !== i))}><Icon name="close" size={14} /></button>
         </div>
       ))}
       <div className="row">
@@ -153,7 +153,7 @@ function FieldProps({ f, set, def }) {
               <div className="opt-row">
                 <input value={p.name} placeholder="Name" onChange={(e) => set({ products: f.products.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)) })} />
                 <input type="number" style={{ width: 90 }} value={p.price} onChange={(e) => set({ products: f.products.map((x, j) => (j === i ? { ...x, price: Number(e.target.value) } : x)) })} />
-                <button className="small danger" onClick={() => set({ products: f.products.filter((_, j) => j !== i) })}>✕</button>
+                <button className="small danger" onClick={() => set({ products: f.products.filter((_, j) => j !== i) })}><Icon name="close" size={14} /></button>
               </div>
               <input value={p.description || ''} placeholder="Description" onChange={(e) => set({ products: f.products.map((x, j) => (j === i ? { ...x, description: e.target.value } : x)) })} />
             </div>

@@ -10,7 +10,7 @@ import { submissionPdf } from '../pdf.js';
 import { restartOnEdit } from '../workflows.js';
 
 const r = Router();
-r.use(requireAuth, requireRole('editor'));
+r.use(['/forms', '/submissions', '/files'], requireAuth, requireRole('editor'));
 
 function ownSub(req, res) {
   const row = db.prepare('SELECT s.* FROM submissions s JOIN forms f ON f.id = s.form_id WHERE s.id = ? AND f.user_id = ?').get(req.params.sid, req.ws.id);
@@ -37,7 +37,7 @@ r.get('/forms/:id/submissions', (req, res) => {
   if (!form) return;
   const all = filtered(form, req.query);
   const limit = Math.min(Number(req.query.limit) || 50, 500);
-  const offset = Number(req.query.offset) || 0;
+  const offset = Math.max(0, Math.floor(Number(req.query.offset) || 0));
   res.json({ total: all.length, submissions: all.slice(offset, offset + limit) });
 });
 
@@ -80,7 +80,7 @@ r.get('/forms/:id/report', (req, res) => {
     } else if (f.type === 'products') {
       const c = {};
       let revenue = 0;
-      for (const v of vals) { revenue += Number(v.total || 0); for (const i of v.items || []) c[i.name] = (c[i.name] || 0) + Number(i.qty || 1); }
+      for (const v of vals) { revenue += Number(v?.total || 0); for (const i of Array.isArray(v?.items) ? v.items : []) if (i) c[i.name] = (c[i.name] || 0) + Number(i.qty || 1); }
       out.counts = c; out.revenue = revenue; out.currency = f.currency;
     } else out.samples = vals.slice(0, 8).map((v) => formatValue(f, v));
     if (f.type === 'rating' || f.type === 'scale') {
@@ -91,7 +91,7 @@ r.get('/forms/:id/report', (req, res) => {
   });
   const paid = subs.filter((s) => s.payment?.status === 'paid');
   res.json({
-    total: subs.length, views: form.views, conversion: form.views ? subs.length / form.views : 0, byDay, fields,
+    total: subs.length, views: form.views, conversion: form.views ? Math.min(1, subs.length / form.views) : 0, byDay, fields,
     revenue: paid.reduce((a, s) => a + Number(s.payment.amount || 0), 0),
     approvals: { pending: subs.filter((s) => s.approval === 'pending').length, approved: subs.filter((s) => s.approval === 'approved').length, rejected: subs.filter((s) => s.approval === 'rejected').length },
   });
@@ -141,6 +141,7 @@ r.post('/submissions/:sid/decision', (req, res) => {
 
 r.post('/submissions/bulk', (req, res) => {
   const { ids = [], action } = req.body || {};
+  if (!Array.isArray(ids)) return res.status(400).json({ error: 'ids must be a list' });
   const own = db.prepare('SELECT s.id FROM submissions s JOIN forms f ON f.id = s.form_id WHERE s.id = ? AND f.user_id = ?');
   for (const id of ids) {
     if (!own.get(id, req.ws.id)) continue;

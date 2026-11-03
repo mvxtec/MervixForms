@@ -117,7 +117,7 @@ export function formatValue(field, v) {
     case 'rating': return `${v} / ${field.stars}`;
     case 'appointment': return `${v.date} ${v.slot}`;
     case 'products':
-      return (v.items || []).map((i) => `${i.name} x${i.qty}`).join(', ') + ` — ${v.currency || ''} ${Number(v.total || 0).toFixed(2)}`;
+      return (Array.isArray(v.items) ? v.items : []).map((i) => `${i?.name} x${i?.qty}`).join(', ') + ` — ${v.currency || ''} ${Number(v.total || 0).toFixed(2)}`;
     case 'donation': return `${v.currency || field.currency || ''} ${Number(v.amount || 0).toFixed(2)}`;
     case 'subscription': {
       const plan = (field.plans || []).find((p) => p.id === v.plan);

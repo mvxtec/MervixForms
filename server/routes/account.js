@@ -11,7 +11,8 @@ const r = Router();
 r.post('/auth/register', (req, res) => {
   const { email, password, name } = req.body || {};
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email || '')) return res.status(400).json({ error: 'Enter a valid e-mail.' });
-  if (!password || password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters.' });
+  if (typeof password !== 'string' || password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters.' });
+  if (typeof email !== 'string') return res.status(400).json({ error: 'Enter a valid e-mail.' });
   if (db.prepare('SELECT 1 FROM users WHERE email = ?').get(email.toLowerCase())) return res.status(409).json({ error: 'An account with this e-mail already exists.' });
   const { lastInsertRowid } = db.prepare('INSERT INTO users (email, name, password_hash) VALUES (?, ?, ?)').run(email.toLowerCase(), name || '', hashPassword(password));
   issueSession(res, Number(lastInsertRowid));
@@ -111,7 +112,7 @@ r.patch('/me', requireAuth, (req, res) => {
   if (password) {
     const u = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(req.user.id);
     if (!verifyPassword(String(currentPassword || ''), u.password_hash)) return res.status(400).json({ error: 'Current password is incorrect.' });
-    if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters.' });
+    if (typeof password !== 'string' || password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters.' });
     db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hashPassword(password), req.user.id);
   }
   res.json({ ok: true });

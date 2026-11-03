@@ -125,7 +125,7 @@ export function WidgetDisplay({ f }) {
     case 'highlight': return <div className="wg-highlight" style={{ background: f.color || '#fef08a' }}>{f.text}</div>;
     case 'spoiler': return <details className="wg-spoiler"><summary>{f.title || 'Show'}</summary><div style={{ whiteSpace: 'pre-wrap' }}>{f.text}</div></details>;
     case 'spacer': return <div style={{ height: Number(f.height) || 32 }} aria-hidden="true" />;
-    case 'separator': return <hr style={{ border: 0, borderTop: `2px ${f.style || 'solid'} ${f.color || '#e7e5e4'}`, margin: '8px 0' }} />;
+    case 'separator': return <hr style={{ border: 0, borderTop: `2px ${f.style || 'solid'} ${f.color || '#e4e4e7'}`, margin: '8px 0' }} />;
     case 'gallery': {
       const imgs = lines(f.images);
       if (!imgs.length) return <Placeholder>Add image URLs in the widget settings.</Placeholder>;
@@ -454,7 +454,7 @@ export function WidgetInput({ f, value, onChange, formId, mode, computed }) {
       return <select value={v} onChange={(e) => onChange(e.target.value)}><option value="">Please select</option>{datasetOptions(f).map((o) => <option key={o}>{o}</option>)}</select>;
     case 'validated': case 'masked': case 'confirm':
       return <input className={f.large ? 'wg-large' : ''} value={v} placeholder={f.placeholder || f.mask || ''} autoComplete="off" onChange={(e) => onChange(e.target.value)} />;
-    case 'calc': return <input readOnly value={computed === '' || computed == null ? '-' : String(computed)} style={{ background: '#f5f5f4', maxWidth: f.calc === 'words_inr' ? '100%' : 260 }} aria-live="polite" />;
+    case 'calc': return <input readOnly value={computed === '' || computed == null ? '-' : String(computed)} style={{ background: '#f4f4f5', maxWidth: f.calc === 'words_inr' ? '100%' : 260 }} aria-live="polite" />;
     case 'capture': return <Capture f={f} value={value} onChange={onChange} formId={formId} mode={mode} />;
     case 'drawing': return <Drawing f={f} value={value} onChange={onChange} />;
     case 'location': return <Location f={f} value={value} onChange={onChange} />;

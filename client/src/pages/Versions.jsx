@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, fmtDate } from '../api.js';
 import FormRenderer from '../components/FormRenderer.jsx';
+import Icon from '../components/Icon.jsx';
 
 export default function Versions({ id, def, onRestored }) {
   const [list, setList] = useState([]);
@@ -54,7 +55,7 @@ export default function Versions({ id, def, onRestored }) {
           <div className="modal wide" style={{ padding: 0, overflow: 'hidden' }} onClick={(e) => e.stopPropagation()}>
             <div className="row" style={{ padding: '10px 14px', borderBottom: '1px solid var(--border)' }}>
               <b>Version #{preview.id}</b><span className="hint">{fmtDate(preview.created_at)} {preview.label}</span>
-              <button className="right" onClick={() => setPreview(null)}>✕</button>
+              <button className="right" onClick={() => setPreview(null)}><Icon name="close" size={14} /></button>
             </div>
             <FormRenderer def={preview.definition} formId={id} mode="preview" />
           </div>

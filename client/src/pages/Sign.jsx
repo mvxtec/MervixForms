@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { api, fmtDate } from '../api.js';
 import { navigate } from '../router.js';
 import PdfPages from '../components/PdfPages.jsx';
+import Icon from '../components/Icon.jsx';
 
 const TYPES = [['signature', 'Signature', 0.25, 0.06], ['initials', 'Initials', 0.1, 0.05], ['name', 'Full name', 0.25, 0.03], ['date', 'Date signed', 0.15, 0.03], ['text', 'Text', 0.25, 0.03], ['checkbox', 'Checkbox', 0.03, 0.02]];
 const COLORS = ['#2563eb', '#16a34a', '#d97706', '#db2777', '#7c3aed', '#0891b2', '#dc2626', '#4b5563', '#65a30d', '#9333ea'];
@@ -104,7 +105,7 @@ export function SignEditor({ id }) {
   return (
     <div className="builder" style={{ gridTemplateColumns: '280px 1fr' }}>
       <div className="palette" style={{ padding: 12 }}>
-        <a href="#/sign-docs">← All documents</a>
+        <a href="#/sign-docs"><Icon name="back" size={14} />All documents</a>
         <label className="lbl">Title</label>
         <input value={doc.title} disabled={!draft} onChange={(e) => set({ title: e.target.value })} />
         <div style={{ marginTop: 8 }}>Status: {statusPill(doc.status)}</div>
@@ -114,7 +115,7 @@ export function SignEditor({ id }) {
             {draft ? (
               <>
                 <div className="row"><input placeholder="Name" value={s.name} onChange={(e) => set({ signers: doc.signers.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)) })} />
-                  {doc.signers.length > 1 && <button className="small danger" onClick={() => set({ signers: doc.signers.filter((_, j) => j !== i), fields: doc.fields.filter((f) => f.signer !== i).map((f) => (f.signer > i ? { ...f, signer: f.signer - 1 } : f)) })}>✕</button>}</div>
+                  {doc.signers.length > 1 && <button className="small danger" onClick={() => set({ signers: doc.signers.filter((_, j) => j !== i), fields: doc.fields.filter((f) => f.signer !== i).map((f) => (f.signer > i ? { ...f, signer: f.signer - 1 } : f)) })}><Icon name="close" size={14} /></button>}</div>
                 <input style={{ marginTop: 4 }} placeholder="E-mail" value={s.email} onChange={(e) => set({ signers: doc.signers.map((x, j) => (j === i ? { ...x, email: e.target.value } : x)) })} />
                 <label className="row hint" style={{ marginTop: 4 }}><input type="radio" checked={signerIdx === i} onChange={() => setSignerIdx(i)} /> place fields for this signer</label>
               </>

@@ -7,7 +7,21 @@ import { TEMPLATES, blankForm, BASE_SETTINGS } from '../templates.js';
 import { sendTestEmail, testIntegration } from '../notify.js';
 
 const r = Router();
-r.use(requireAuth, requireRole('editor'));
+r.use(['/forms', '/templates'], requireAuth, requireRole('editor'));
+
+// A form definition must be an object whose fields are objects with an id and a type.
+export function badDefinition(def) {
+  if (!def || typeof def !== 'object' || Array.isArray(def)) return 'The form definition must be an object.';
+  if (def.fields !== undefined && !Array.isArray(def.fields)) return 'fields must be a list.';
+  const ids = new Set();
+  for (const f of def.fields || []) {
+    if (!f || typeof f !== 'object' || typeof f.id !== 'string' || typeof f.type !== 'string') return 'Every field needs an id and a type.';
+    if (ids.has(f.id)) return `Duplicate field id "${f.id}".`;
+    ids.add(f.id);
+  }
+  if (def.settings !== undefined && (typeof def.settings !== 'object' || Array.isArray(def.settings))) return 'settings must be an object.';
+  return null;
+}
 
 const newId = () => (Date.now().toString(36) + crypto.randomBytes(4).toString('hex')).slice(-14);
 
@@ -46,7 +60,8 @@ r.get('/forms', (req, res) => {
   const args = [req.ws.id];
   if (status === 'trashed') sql += " AND f.status = 'trashed'";
   else if (status === 'favorites') sql += " AND f.status != 'trashed' AND f.favorite = 1";
-  else sql += " AND f.status != 'trashed'";
+  else if (status === 'archived') sql += " AND f.status = 'archived'";
+  else sql += " AND f.status NOT IN ('trashed', 'archived')";
   if (folder) { sql += ' AND f.folder = ?'; args.push(folder); }
   if (q) { sql += ' AND f.title LIKE ?'; args.push(`%${q}%`); }
   sql += ' ORDER BY f.updated_at DESC';
@@ -59,7 +74,11 @@ r.post('/forms', (req, res) => {
   if (!checkFormQuota(req, res)) return;
   const { title, templateId, definition, folder } = req.body || {};
   let def;
-  if (definition) def = { ...blankForm(definition.title || title), ...definition }; // import JSON
+  if (definition) { // import JSON
+    const bad = badDefinition(definition);
+    if (bad) return res.status(400).json({ error: `This JSON is not a valid form: ${bad}` });
+    def = { ...blankForm(String(definition.title || title || 'Imported form')), ...definition };
+  }
   else if (templateId) {
     const t = TEMPLATES.find((x) => x.id === templateId);
     if (!t) return res.status(404).json({ error: 'Template not found' });
@@ -78,7 +97,8 @@ r.put('/forms/:id', (req, res) => {
   const f = ownForm(req, res);
   if (!f) return;
   const def = req.body?.definition;
-  if (!def || !Array.isArray(def.fields)) return res.status(400).json({ error: 'Invalid form definition' });
+  const bad = badDefinition(def) || (!Array.isArray(def?.fields) && 'fields must be a list.');
+  if (bad) return res.status(400).json({ error: `Invalid form definition: ${bad}` });
   const plan = planOf(req.ws.plan);
   if (def.fields.length > plan.fieldsPerForm) return res.status(402).json({ error: `Your ${plan.name} plan allows ${plan.fieldsPerForm} fields per form.`, upgrade: true });
   db.prepare("UPDATE forms SET definition = ?, title = ?, updated_at = datetime('now') WHERE id = ?").run(JSON.stringify(def), def.title || f.title, f.id);
@@ -127,15 +147,18 @@ r.patch('/forms/:id', (req, res) => {
   const f = ownForm(req, res);
   if (!f) return;
   const { status, favorite, folder, title } = req.body || {};
-  if (status && ['enabled', 'disabled', 'trashed', 'archived'].includes(status)) {
+  if (status !== undefined && !['enabled', 'disabled', 'trashed', 'archived'].includes(status)) return res.status(400).json({ error: 'Unknown status' });
+  if (title !== undefined && (typeof title !== 'string' || !title.trim())) return res.status(400).json({ error: 'Title must be text' });
+  if (folder !== undefined && folder !== null && typeof folder !== 'string') return res.status(400).json({ error: 'Label must be text' });
+  if (status) {
     if (f.status === 'trashed' && status !== 'trashed' && !checkFormQuota(req, res)) return;
     db.prepare('UPDATE forms SET status = ? WHERE id = ?').run(status, f.id);
   }
   if (favorite !== undefined) db.prepare('UPDATE forms SET favorite = ? WHERE id = ?').run(favorite ? 1 : 0, f.id);
-  if (folder !== undefined) db.prepare('UPDATE forms SET folder = ? WHERE id = ?').run(String(folder), f.id);
+  if (folder !== undefined) db.prepare('UPDATE forms SET folder = ? WHERE id = ?').run((folder || '').trim().slice(0, 60), f.id);
   if (title) {
-    f.definition.title = String(title);
-    db.prepare("UPDATE forms SET title = ?, definition = ?, updated_at = datetime('now') WHERE id = ?").run(String(title), JSON.stringify(f.definition), f.id);
+    f.definition.title = title.trim().slice(0, 200);
+    db.prepare("UPDATE forms SET title = ?, definition = ?, updated_at = datetime('now') WHERE id = ?").run(f.definition.title, JSON.stringify(f.definition), f.id);
   }
   res.json({ ok: true });
 });

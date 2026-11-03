@@ -196,7 +196,7 @@ export default function Conditions({ def, update, formId, me, workflows = [] }) 
             <button key={t.key} className="type-card" onClick={() => setView({ mode: 'edit', rule: { id: rid(), kind: t.key, match: 'all', conditions: [{ field: '', op: 'equals', value: '' }], actions: [{ type: t.actions[0], target: '', value: '' }] } })}>
               <span className="settings-icon small"><Icon name={TYPE_ICON[t.key]} size={16} /></span>
               <span className="grow" style={{ textAlign: 'left' }}>
-                <span className="row" style={{ fontWeight: 600 }}>{t.title}{t.isNew && <span className="pill amber" style={{ fontSize: 10, padding: '0 6px' }}>NEW</span>}</span>
+                <span className="row" style={{ fontWeight: 600 }}>{t.title}{t.isNew && <span className="tag">NEW</span>}</span>
                 <span className="hint" style={{ display: 'block', fontSize: 13 }}>{t.desc}</span>
               </span>
               <Icon name="down" size={16} style={{ transform: 'rotate(-90deg)', color: 'var(--muted)' }} />

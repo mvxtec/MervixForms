@@ -34,7 +34,7 @@ export function NewFormModal({ onClose, folder }) {
   return (
     <div className="modal-back" onClick={onClose}>
       <div className="modal wide" role="dialog" aria-modal="true" aria-labelledby="new-form-h" onClick={(e) => e.stopPropagation()}>
-        <div className="row" style={{ marginBottom: 8 }}><h2 id="new-form-h" style={{ margin: 0 }}>Create a form</h2><button className="right icon-btn ghost" onClick={onClose} aria-label="Close">✕</button></div>
+        <div className="row" style={{ marginBottom: 8 }}><h2 id="new-form-h" style={{ margin: 0 }}>Create a form</h2><button className="right icon-btn ghost" onClick={onClose} aria-label="Close"><Icon name="close" size={14} /></button></div>
         {error && <p className="error">{error}</p>}
         <h3 style={{ marginTop: 16 }}>Start from scratch</h3>
         <div className="row wrap">
