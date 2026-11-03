@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { db, parseForm } from '../db.js';
 import { requireAuth, requireRole } from '../auth.js';
-import { generateForm, translateForm, agentTurn, chatFields, AiUnavailable } from '../ai.js';
+import { generateForm, translateForm, generateConditions, agentTurn, chatFields, AiUnavailable } from '../ai.js';
 
 const r = Router();
 
@@ -19,6 +19,15 @@ r.post('/ai/translate', requireAuth, requireRole('editor'), async (req, res) => 
   const language = String(req.body?.language || '').trim();
   if (!language) return res.status(400).json({ error: 'Choose a language' });
   try { res.json({ strings: await translateForm(req.body?.definition || form.definition, language) }); } catch (e) { fail(res, e); }
+});
+
+// Settings → Conditions → "Describe your conditions". Returns rules for the builder to review; nothing is saved here.
+r.post('/ai/conditions', requireAuth, requireRole('editor'), async (req, res) => {
+  const form = parseForm(db.prepare('SELECT * FROM forms WHERE id = ? AND user_id = ?').get(req.body?.formId, req.ws.id));
+  if (!form) return res.status(404).json({ error: 'Form not found' });
+  const prompt = String(req.body?.prompt || '').trim();
+  if (prompt.length < 5) return res.status(400).json({ error: 'Describe the condition you need.' });
+  try { res.json({ rules: await generateConditions(req.body?.definition || form.definition, prompt.slice(0, 2000)) }); } catch (e) { fail(res, e); }
 });
 
 // Public conversational agent for a published form (enabled per form in Settings → AI Agent).

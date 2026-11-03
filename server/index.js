@@ -20,6 +20,9 @@ const { default: publicRoutes } = await import('./routes/public.js');
 const { default: ai } = await import('./routes/ai.js');
 const { default: sign } = await import('./routes/sign.js');
 const { default: apps } = await import('./routes/apps.js');
+const { default: workflows } = await import('./routes/workflows.js');
+const { startScheduler } = await import('./workflows.js');
+startScheduler();
 
 // Async route handlers must never take the process down.
 process.on('unhandledRejection', (e) => console.error('unhandledRejection', e));
@@ -33,6 +36,7 @@ app.use('/api/public', publicRoutes);
 app.use('/api', ai);
 app.use('/api', sign);
 app.use('/api', apps);
+app.use('/api', workflows);
 app.use('/api', account);
 app.use('/api', forms);
 app.use('/api', submissions);

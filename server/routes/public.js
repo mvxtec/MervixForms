@@ -211,7 +211,8 @@ r.post('/forms/:id/submit', async (req, res) => {
   for (const f of fields.filter((x) => x.type === 'products')) {
     const v = data[f.id];
     if (!v?.items?.length) continue;
-    const catalog = Object.fromEntries((f.products || []).map((p) => [p.id, p]));
+    // Products hidden by "Update Product List" conditions can't be bought.
+    const catalog = Object.fromEntries((f.products || []).filter((p) => !state.hiddenProducts?.[f.id]?.has(p.id)).map((p) => [p.id, p]));
     v.items = v.items.filter((i) => catalog[i.id]).map((i) => ({ id: i.id, name: catalog[i.id].name, price: Number(catalog[i.id].price), qty: Math.max(1, Math.floor(Number(i.qty) || 1)) }));
     v.total = productTotal(f, v);
     v.currency = f.currency;
@@ -250,7 +251,7 @@ r.post('/forms/:id/submit', async (req, res) => {
   if (signed) bumpUsage(owner.id, 'signatures');
   if (req.body?.draftToken) db.prepare('DELETE FROM drafts WHERE token = ?').run(String(req.body.draftToken));
 
-  const result = { id: sub.id, thankYou: state.thankYou || settings.thankYou?.message, redirect: state.redirect || settings.thankYou?.redirect || '' };
+  const result = { id: sub.id, thankYou: state.thankYou || settings.thankYou?.message, redirect: state.redirect || (settings.thankYou?.mode !== 'page' && settings.thankYou?.redirect) || '' };
 
   if (payment?.provider === 'stripe') {
     try {

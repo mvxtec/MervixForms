@@ -2,7 +2,7 @@
 // browser (live form behaviour) and on the server (authoritative validation).
 import { evaluateFormula, toNumber } from './formula.js';
 import { isEmpty, isInput } from './fields.js';
-import { widgetKind, computeWidget, validateWidget } from './widgets.js';
+import { widgetKind, computeWidget, validateWidget, maskMatches } from './widgets.js';
 
 // Fields filled automatically and never shown (hidden fields, metadata widgets).
 export const isAutoField = (f) => f.type === 'hidden' || (f.type === 'widget' && ['meta', 'uniqueId'].includes(widgetKind(f)));
@@ -26,11 +26,43 @@ export const ACTION_TYPES = {
   hide: 'Hide field',
   require: 'Require field',
   unrequire: 'Make field optional',
+  enable: 'Enable field',
+  disable: 'Disable field',
+  mask: 'Set input mask',
   setValue: 'Set / calculate value',
+  setOptions: 'Update options',
+  showProducts: 'Show products',
+  hideProducts: 'Hide products',
   skipTo: 'Skip to page',
+  hidePage: 'Hide page',
   thankyou: 'Change thank-you message',
   redirect: 'Redirect to URL',
+  emailTo: 'Change e-mail recipient',
+  runWorkflow: 'Run workflow',
 };
+
+// Condition types offered when adding a condition (Jotform's "New condition" screen); each maps to a set of actions.
+export const CONDITION_TYPES = [
+  { key: 'visibility', title: 'Show/Hide Field', desc: 'Change visibility of specific form fields', actions: ['show', 'hide'] },
+  { key: 'calculate', title: 'Update/Calculate Field', desc: "Copy a field's value or perform calculations", actions: ['setValue'] },
+  { key: 'state', title: 'Enable/Require/Mask Field', desc: 'Require or disable a field, or set a mask', actions: ['require', 'unrequire', 'enable', 'disable', 'mask'] },
+  { key: 'options', title: 'Update Options', desc: 'Change dropdown, single-choice and multiple-choice options', actions: ['setOptions'], isNew: true },
+  { key: 'products', title: 'Update Product List', desc: 'Show or hide products in a payment field', actions: ['showProducts', 'hideProducts'], isNew: true },
+  { key: 'page', title: 'Skip to/Hide a Page', desc: 'Skip to or hide a specific page', actions: ['skipTo', 'hidePage'] },
+  { key: 'thankyou', title: 'Change Thank You Page', desc: 'Customize your thank-you page action', actions: ['thankyou', 'redirect'] },
+  { key: 'email', title: 'Change Email Recipient', desc: 'Send e-mails to specific people', actions: ['emailTo'] },
+  { key: 'workflow', title: 'Run Workflow', desc: 'Trigger a workflow when a condition is met', actions: ['runWorkflow'], isNew: true },
+];
+
+// Which page (0-based) each field sits on in a classic layout, and the page each page break starts.
+function pageIndex(fields) {
+  const byField = {}, byBreak = {};
+  let page = 0;
+  for (const f of fields) {
+    if (f.type === 'pagebreak') { page++; byBreak[f.id] = page; } else byField[f.id] = page;
+  }
+  return { byField, byBreak };
+}
 
 const str = (v) => (Array.isArray(v) ? v.join(', ') : typeof v === 'object' && v ? JSON.stringify(v) : String(v ?? '')).toLowerCase();
 
@@ -61,7 +93,7 @@ export function ruleFires(rule, values) {
 // Returns derived state for the current values: computed values, hidden & required sets, overrides.
 export function computeState(def, rawValues) {
   const fields = def.fields || [];
-  const rules = def.logic || [];
+  const rules = (def.logic || []).filter((r) => !r.disabled);
   const values = { ...rawValues };
   const byId = Object.fromEntries(fields.map((f) => [f.id, f]));
 
@@ -83,6 +115,15 @@ export function computeState(def, rawValues) {
   let thankYou = null;
   let redirect = null;
   const skips = [];
+  const disabled = new Set();
+  const masks = {};
+  const options = {};
+  const hiddenProducts = {};
+  const shownProducts = {};
+  const hiddenPages = new Set();
+  const emailTo = {};
+  const workflows = [];
+  const list = (v) => (Array.isArray(v) ? v : String(v || '').split(/\n|,/)).map((x) => String(x).trim()).filter(Boolean);
 
   for (const r of rules) for (const a of r.actions || []) if (a.type === 'show') showTargets.add(a.target);
 
@@ -100,6 +141,15 @@ export function computeState(def, rawValues) {
         case 'skipTo': skips.push({ target: a.target, from: (r.conditions || []).map((c) => c.field) }); break;
         case 'thankyou': thankYou = a.value; break;
         case 'redirect': redirect = a.value; break;
+        case 'enable': disabled.delete(a.target); break;
+        case 'disable': disabled.add(a.target); break;
+        case 'mask': masks[a.target] = a.value; break;
+        case 'setOptions': options[a.target] = list(a.value); break;
+        case 'hideProducts': hiddenProducts[a.target] = new Set([...(hiddenProducts[a.target] || []), ...list(a.value)]); break;
+        case 'showProducts': shownProducts[a.target] = new Set([...(shownProducts[a.target] || []), ...list(a.value)]); break;
+        case 'hidePage': hiddenPages.add(a.target); break;
+        case 'emailTo': emailTo[a.target] = a.value; break;
+        case 'runWorkflow': if (a.target) workflows.push(a.target); break;
       }
     }
   }
@@ -107,8 +157,19 @@ export function computeState(def, rawValues) {
   for (const id of showTargets) if (!shown.has(id)) hidden.add(id);
   for (const id of shown) hidden.delete(id);
   for (const f of fields) if (isAutoField(f)) hidden.add(f.id);
+  // "Show products" rules: listed products start hidden until a rule shows them.
+  for (const r of rules) for (const a of r.actions || []) {
+    if (a.type !== 'showProducts') continue;
+    for (const id of list(a.value)) if (!shownProducts[a.target]?.has(id)) (hiddenProducts[a.target] ||= new Set()).add(id);
+  }
+  if (hiddenPages.size) {
+    const { byField, byBreak } = pageIndex(fields);
+    const pages = new Set([...hiddenPages].map((id) => byBreak[id]).filter((x) => x != null));
+    for (const f of fields) if (pages.has(byField[f.id])) hidden.add(f.id);
+  }
+  for (const id of disabled) required.delete(id);
 
-  return { values, hidden, required, thankYou, redirect, skips };
+  return { values, hidden, required, thankYou, redirect, skips, disabled, masks, options, hiddenProducts, emailTo, workflows };
 }
 
 // Pages: classic layout splits on page breaks; card layout puts each visible element on its own page.
@@ -138,6 +199,7 @@ export function validateField(f, v, state) {
   if (f.type === 'widget' && widgetKind(f) === 'idpin' && req && !v?.id) return 'Please enter your ID.';
   if (req && isEmpty(v)) return 'This field is required.';
   if (isEmpty(v)) return null;
+  if (state.masks?.[f.id] && !maskMatches(state.masks[f.id], String(v))) return `Use the format ${state.masks[f.id]}.`;
   switch (f.type) {
     case 'email':
       if (!EMAIL_RE.test(String(v))) return 'Enter a valid e-mail address.';

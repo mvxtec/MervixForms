@@ -4,7 +4,8 @@ import Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
 import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod';
 import { FIELD_TYPES, isInput } from '../shared/fields.js';
-import { CONDITION_OPS } from '../shared/logic.js';
+import { CONDITION_OPS, ACTION_TYPES } from '../shared/logic.js';
+import { formEmails } from '../shared/emails.js';
 
 const MODEL = process.env.AI_MODEL || 'claude-opus-5-5';
 let client = null;
@@ -132,6 +133,44 @@ export async function translateForm(def, language) {
     messages: [{ role: 'user', content: `Translate each value into ${language}:\n${JSON.stringify(strings)}` }],
   });
   return Object.fromEntries(result.items.filter((i) => i.key in strings).map((i) => [i.key, i.text]));
+}
+
+// --- Workflow AI steps (summarize, sentiment, categorize, custom prompt) -------
+export async function aiText(instruction, content) {
+  const out = await structured(z.object({ text: z.string() }), {
+    system: 'You process form submissions inside an automated workflow. Reply with only the requested result, no preamble.',
+    messages: [{ role: 'user', content: `${instruction}\n\n${content}` }],
+    effort: 'low',
+    maxTokens: 2000,
+  });
+  return out.text.trim();
+}
+
+// --- Conditions from a description ("Describe your conditions") --------------
+const RuleSpec = z.object({
+  rules: z.array(z.object({
+    match: z.enum(['all', 'any']),
+    conditions: z.array(z.object({ field: z.string(), op: z.enum(Object.keys(CONDITION_OPS)), value: z.string() })),
+    actions: z.array(z.object({ type: z.enum(Object.keys(ACTION_TYPES)), target: z.string(), value: z.string() })),
+  })),
+});
+
+export async function generateConditions(def, prompt) {
+  const fields = def.fields.map((f) => ({ id: f.id, type: f.type, label: f.label, options: f.options || f.products?.map((p) => p.id) }));
+  const emails = formEmails(def.settings).map((e) => ({ id: e.id, name: e.name }));
+  const spec = await structured(RuleSpec, {
+    system: `You turn plain-language requirements into conditional-logic rules for an online form.
+Each rule: IF its conditions match (all/any) THEN run its actions. Use only the field ids given. Condition ops: ${Object.entries(CONDITION_OPS).map(([k, l]) => `${k} (${l})`).join(', ')}.
+Actions: ${Object.entries(ACTION_TYPES).map(([k, l]) => `${k} (${l})`).join(', ')}.
+For skipTo/hidePage the target is a pagebreak field id (or "end"). For emailTo the target is an e-mail id and value the address. For setOptions value is a newline list; for show/hideProducts value lists product ids. Use "" for unused value/target.`,
+    messages: [{ role: 'user', content: `Fields: ${JSON.stringify(fields)}\nE-mails: ${JSON.stringify(emails)}\n\nRequirement: ${prompt}` }],
+    effort: 'low',
+    maxTokens: 4000,
+  });
+  const ids = new Set(def.fields.map((f) => f.id));
+  return spec.rules
+    .map((r, i) => ({ id: `r${Date.now().toString(36)}${i}`, match: r.match, conditions: r.conditions.filter((c) => ids.has(c.field)), actions: r.actions }))
+    .filter((r) => r.conditions.length && r.actions.length);
 }
 
 // --- Conversational agent ---------------------------------------------------

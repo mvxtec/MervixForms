@@ -7,6 +7,7 @@ import { ownForm } from './forms.js';
 import { formatValue, isInput, isEmpty } from '../../shared/fields.js';
 import { notifyDecision } from '../notify.js';
 import { submissionPdf } from '../pdf.js';
+import { restartOnEdit } from '../workflows.js';
 
 const r = Router();
 r.use(requireAuth, requireRole('editor'));
@@ -109,7 +110,11 @@ r.patch('/submissions/:sid', (req, res) => {
   const { status, starred, data } = req.body || {};
   if (status) db.prepare('UPDATE submissions SET status = ? WHERE id = ?').run(status === 'new' ? 'new' : 'read', s.id);
   if (starred !== undefined) db.prepare('UPDATE submissions SET starred = ? WHERE id = ?').run(starred ? 1 : 0, s.id);
-  if (data && typeof data === 'object') db.prepare("UPDATE submissions SET data = ?, updated_at = datetime('now') WHERE id = ?").run(JSON.stringify({ ...s.data, ...data }), s.id);
+  if (data && typeof data === 'object') {
+    db.prepare("UPDATE submissions SET data = ?, updated_at = datetime('now') WHERE id = ?").run(JSON.stringify({ ...s.data, ...data }), s.id);
+    const form = parseForm(db.prepare('SELECT * FROM forms WHERE id = ?').get(s.form_id));
+    restartOnEdit(form, { ...s, data: { ...s.data, ...data } }).catch((e) => console.error('workflow restart', e));
+  }
   res.json({ ok: true });
 });
 

@@ -3,7 +3,7 @@ import { api } from '../api.js';
 import { navigate } from '../router.js';
 import { useMe } from '../App.jsx';
 import Builder from './Builder.jsx';
-import LogicEditor from './LogicEditor.jsx';
+import WorkflowsPane from './Workflows.jsx';
 import SettingsPanel from './SettingsPanel.jsx';
 import Publish from './Publish.jsx';
 import Inbox from './Inbox.jsx';
@@ -12,7 +12,7 @@ import Versions from './Versions.jsx';
 import FormRenderer from '../components/FormRenderer.jsx';
 import Icon from '../components/Icon.jsx';
 
-const TABS = [['build', 'Build'], ['logic', 'Logic'], ['settings', 'Settings'], ['publish', 'Publish'], ['inbox', 'Inbox'], ['reports', 'Reports'], ['history', 'History']];
+const TABS = [['build', 'Build'], ['settings', 'Settings'], ['publish', 'Publish'], ['inbox', 'Inbox'], ['reports', 'Reports'], ['history', 'History']];
 
 export default function FormWorkspace({ id, tab, sid }) {
   const me = useMe();
@@ -27,6 +27,8 @@ export default function FormWorkspace({ id, tab, sid }) {
 
   const loadForm = () => api(`/forms/${id}`).then((f) => { setForm(f); setDef(f.definition); latest.current = f.definition; setHistory({ past: [], future: [] }); }).catch(() => navigate('/'));
   useEffect(() => { loadForm(); }, [id]);
+  // Conditions moved into Settings; keep old links working.
+  useEffect(() => { if (tab === 'logic') navigate(`/forms/${id}/settings/conditions`); }, [tab]);
 
   const save = useCallback(async () => {
     clearTimeout(timer.current);
@@ -98,7 +100,6 @@ export default function FormWorkspace({ id, tab, sid }) {
           {TABS.map(([k, l]) => (
             <a key={k} href={`#/forms/${id}/${k}`} className={tab === k ? 'on' : ''} aria-current={tab === k ? 'page' : undefined}>
               {l}
-              {k === 'logic' && (def.logic || []).length > 0 && <span className="pill" style={{ padding: '0 6px' }}>{def.logic.length}</span>}
               {k === 'inbox' && form.unread > 0 && <span className="badge">{form.unread}</span>}
             </a>
           ))}
@@ -115,8 +116,11 @@ export default function FormWorkspace({ id, tab, sid }) {
         </div>
       </header>
       {tab === 'build' && <Builder def={def} update={update} plan={me.plan} />}
-      {tab === 'logic' && <div className="page"><LogicEditor def={def} update={update} /></div>}
-      {tab === 'settings' && <div className="page"><SettingsPanel def={def} update={update} me={me} formId={id} /></div>}
+      {tab === 'settings' && (
+        <SettingsPanel def={def} update={update} me={me} formId={id} form={form} section={sid || 'form'}
+          onStatus={async (status) => { await api(`/forms/${id}`, { method: 'PATCH', body: { status } }); setForm((f) => ({ ...f, status })); }}
+          workflowsPane={<WorkflowsPane formId={id} def={def} update={update} me={me} />} />
+      )}
       {tab === 'publish' && <div className="page"><Publish id={id} def={def} /></div>}
       {tab === 'inbox' && <Inbox form={{ ...form, definition: def }} sid={sid} />}
       {tab === 'reports' && <div className="page"><Reports form={{ ...form, definition: def }} /></div>}

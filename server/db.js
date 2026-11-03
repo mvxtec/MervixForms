@@ -176,6 +176,47 @@ addColumn('outbox', 'status', "status TEXT NOT NULL DEFAULT 'stored'"); // store
 addColumn('outbox', 'error', 'error TEXT');
 addColumn('outbox', 'attachments', 'attachments TEXT');
 
+// Workflows: a tree of steps run after each submission (see server/workflows.js).
+db.exec(`
+CREATE TABLE IF NOT EXISTS workflows (
+  id TEXT PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  form_id TEXT REFERENCES forms(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'enabled',       -- enabled | disabled
+  definition TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS workflow_runs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  workflow_id TEXT NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
+  submission_id INTEGER REFERENCES submissions(id) ON DELETE CASCADE,
+  token TEXT NOT NULL UNIQUE,                   -- public tracking-page token
+  status TEXT NOT NULL DEFAULT 'running',       -- running | waiting | completed | cancelled | failed
+  label TEXT NOT NULL DEFAULT 'In Progress',    -- shown on the tracking page (Set Status step)
+  cursor TEXT NOT NULL DEFAULT '[0]',           -- path to the current step
+  vars TEXT NOT NULL DEFAULT '{}',              -- outputs of earlier steps
+  log TEXT NOT NULL DEFAULT '[]',
+  resume_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_runs_wait ON workflow_runs(status, resume_at);
+CREATE TABLE IF NOT EXISTS workflow_tasks (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  run_id INTEGER NOT NULL REFERENCES workflow_runs(id) ON DELETE CASCADE,
+  node_id TEXT NOT NULL,
+  kind TEXT NOT NULL,                           -- approval | task
+  assignee TEXT NOT NULL,
+  token TEXT NOT NULL UNIQUE,
+  status TEXT NOT NULL DEFAULT 'pending',       -- pending | approved | rejected | done | skipped
+  note TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  decided_at TEXT
+);
+`);
+
 export const month = () => new Date().toISOString().slice(0, 7);
 
 export function bumpUsage(userId, col, by = 1) {

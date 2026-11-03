@@ -8,7 +8,7 @@ import Icon from '../components/Icon.jsx';
 const TINTS = ['#ccfbf1', '#e0e7ff', '#fce7f3', '#fef3c7', '#ffedd5', '#dcfce7', '#e0f2fe'];
 const tintOf = (id) => TINTS[[...String(id)].reduce((s, c) => s + c.charCodeAt(0), 0) % TINTS.length];
 
-function NewFormModal({ onClose, folder }) {
+export function NewFormModal({ onClose, folder }) {
   const me = useMe();
   const [aiPrompt, setAiPrompt] = useState('');
   const [aiBusy, setAiBusy] = useState(false);

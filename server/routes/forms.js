@@ -4,6 +4,7 @@ import { db, parseForm, getUsage } from '../db.js';
 import { requireAuth, requireRole } from '../auth.js';
 import { planOf } from '../../shared/plans.js';
 import { TEMPLATES, blankForm, BASE_SETTINGS } from '../templates.js';
+import { sendTestEmail, testIntegration } from '../notify.js';
 
 const r = Router();
 r.use(requireAuth, requireRole('editor'));
@@ -152,6 +153,23 @@ r.post('/forms/:id/clone', (req, res) => {
   const def = structuredClone(f.definition);
   def.title = `Clone of ${f.title}`;
   res.json({ id: insertForm(req.ws.id, def, f.folder) });
+});
+
+// Settings → Emails → "Test Email": sends the e-mail being edited to the signed-in user with sample answers.
+r.post('/forms/:id/test-email', async (req, res) => {
+  const f = ownForm(req, res);
+  if (!f) return;
+  const email = req.body?.email;
+  if (!email || typeof email !== 'object') return res.status(400).json({ error: 'No e-mail to test' });
+  const form = { ...f, definition: req.body?.definition || f.definition };
+  await sendTestEmail(form, { id: req.ws.id, email: req.user.email }, email);
+  res.json({ ok: true, to: req.user.email });
+});
+
+r.post('/forms/:id/test-integration', async (req, res) => {
+  const f = ownForm(req, res);
+  if (!f) return;
+  res.json(await testIntegration(f, String(req.body?.kind || 'webhook'), String(req.body?.url || '')));
 });
 
 r.get('/forms/:id/webhooks', (req, res) => {

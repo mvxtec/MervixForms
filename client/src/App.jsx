@@ -10,6 +10,10 @@ import SignPublic from './pages/SignPublic.jsx';
 import { SignList, SignEditor } from './pages/Sign.jsx';
 import { AppsList, AppEditor } from './pages/Apps.jsx';
 import Icon from './components/Icon.jsx';
+import WorkflowBuilder from './pages/WorkflowBuilder.jsx';
+import CreateMenu from './components/CreateMenu.jsx';
+import { WorkflowsPage } from './pages/Workflows.jsx';
+import { WfTask, Track } from './pages/WfPublic.jsx';
 
 const MeContext = createContext(null);
 export const useMe = () => useContext(MeContext);
@@ -17,6 +21,7 @@ export const useMe = () => useContext(MeContext);
 export default function App() {
   const route = useHashRoute();
   const [me, setMe] = useState(undefined);
+  const [creating, setCreating] = useState(false);
   const refresh = () => api('/me').then(setMe).catch(() => setMe(null));
   useEffect(() => { refresh(); }, []);
 
@@ -25,6 +30,10 @@ export default function App() {
   if (approve) return <Approve {...approve} />;
   const signLink = match('/sign/:token', route);
   if (signLink) return <SignPublic token={signLink.token} />;
+  const wfTask = match('/wf-task/:token', route);
+  if (wfTask) return <WfTask token={wfTask.token} />;
+  const track = match('/track/:token', route);
+  if (track) return <Track token={track.token} />;
 
   if (me === undefined) return <div className="page muted">Loading…</div>;
   if (!me) return <Auth onDone={refresh} />;
@@ -36,6 +45,8 @@ export default function App() {
   else if (route.startsWith('/sign-docs')) body = <SignList />;
   else if ((m = match('/apps/:id/:tab', route)) || (m = match('/apps/:id', route))) body = <AppEditor key={m.id} id={m.id} tab={m.tab} />;
   else if (route.startsWith('/apps')) body = <AppsList />;
+  else if ((m = match('/workflows/:id/:tab', route)) || (m = match('/workflows/:id', route))) body = <WorkflowBuilder key={m.id} id={m.id} tab={m.tab} />;
+  else if (route.startsWith('/workflows')) body = <WorkflowsPage />;
   else body = <Workspace />;
 
   const logout = async () => { await api('/auth/logout', { method: 'POST' }); setMe(null); navigate('/'); };
@@ -44,6 +55,7 @@ export default function App() {
   const nav = [
     ['#/', 'forms', 'Forms', top === '' || top === 'forms'],
     ['#/sign-docs', 'sign', 'Sign documents', top.startsWith('sign')],
+    ['#/workflows', 'redo', 'Workflows', top === 'workflows'],
     ['#/apps', 'apps', 'Apps & stores', top === 'apps'],
     ['#/account/plan', 'account', 'Account', top === 'account'],
   ];
@@ -62,6 +74,7 @@ export default function App() {
           ) : (
             <div className="hint" style={{ padding: '0 10px' }}>{me.plan.name} plan{me.workspace.role !== 'owner' ? ` · ${me.workspace.role}` : ''}</div>
           )}
+          <button className="primary" style={{ minHeight: 42, width: '100%' }} onClick={() => setCreating(true)}><Icon name="plus" />Create</button>
           <nav className="side-nav">
             {nav.map(([href, icon, label, active]) => (
               <a key={href} href={href} className={active ? 'active' : ''} aria-current={active ? 'page' : undefined}><Icon name={icon} />{label}</a>
@@ -81,6 +94,7 @@ export default function App() {
           </div>
         </aside>
         <div className="main">{body}</div>
+        {creating && <CreateMenu onClose={() => setCreating(false)} />}
       </div>
     </MeContext.Provider>
   );

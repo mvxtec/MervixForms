@@ -351,7 +351,7 @@ export default function Builder({ def, update, plan }) {
               <div className="panel" style={{ marginTop: 16, background: 'var(--accent-soft)', borderColor: 'var(--accent-line)', padding: 12 }}>
                 <div className="row" style={{ fontWeight: 500 }}><Icon name="logic" size={14} style={{ color: 'var(--accent)' }} />Logic</div>
                 <div style={{ fontSize: 13, margin: '6px 0' }}>{logicTag(def, sel.id)}</div>
-                <a href={`${window.location.hash.replace(/\/build.*$/, '')}/logic`}>Edit rules</a>
+                <a href={`${window.location.hash.replace(/\/build.*$/, '')}/settings/conditions`}>Edit rules</a>
               </div>
             )}
           </>

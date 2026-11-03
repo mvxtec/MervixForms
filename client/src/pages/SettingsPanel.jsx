@@ -1,21 +1,15 @@
 import { useState } from 'react';
+import Icon from '../components/Icon.jsx';
+import RichText from '../components/RichText.jsx';
+import Conditions from './Conditions.jsx';
+import { Emails, Notifications } from './Emails.jsx';
+import Integrations from './Integrations.jsx';
+import { looksLikeHtml } from '../sanitize.js';
 import { isDisplay } from '@shared/fields.js';
 import { LANGUAGES, TEXT_PROPS, LIST_PROPS } from '@shared/i18n.js';
 import { api } from '../api.js';
 
-const SECTIONS = [['general', 'General'], ['thankyou', 'Thank You Page'], ['emails', 'Emails'], ['pdf', 'PDF Document'], ['approvals', 'Approvals'], ['payments', 'Payments'], ['translations', 'Translations'], ['agent', 'AI Agent'], ['integrations', 'Integrations']];
 
-const SHEETS_SCRIPT = `function doPost(e) {
-  var body = JSON.parse(e.postData.contents);
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sh = ss.getSheetByName(body.sheet) || ss.insertSheet(body.sheet);
-  var keys = Object.keys(body.row);
-  if (sh.getLastRow() === 0) sh.appendRow(keys);
-  var head = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
-  keys.forEach(function (k) { if (head.indexOf(k) < 0) { head.push(k); sh.getRange(1, head.length).setValue(k); } });
-  sh.appendRow(head.map(function (h) { return body.row[h] === undefined ? '' : body.row[h]; }));
-  return ContentService.createTextOutput('ok');
-}`;
 
 function Translations({ def, update, me, formId }) {
   const list = def.translations || [];
@@ -78,159 +72,220 @@ function Translations({ def, update, me, formId }) {
   );
 }
 
-export default function SettingsPanel({ def, update, me, formId }) {
-  const [sec, setSec] = useState('general');
-  const s = def.settings || {};
-  const set = (patch) => update((d) => ({ ...d, settings: { ...d.settings, ...patch } }));
-  const setIn = (k, patch) => set({ [k]: { ...(s[k] || {}), ...patch } });
-  const setInteg = (k, patch) => set({ integrations: { ...(s.integrations || {}), [k]: { ...(s.integrations?.[k] || {}), ...patch } } });
-  const setPdf = (patch) => update((d) => ({ ...d, pdf: { ...(d.pdf || {}), ...patch } }));
-  const emailFields = def.fields.filter((f) => f.type === 'email');
-  const tokens = def.fields.filter((f) => !isDisplay(f));
+// Left menu of Settings, in Jotform's order; extra sections sit under "More".
+export const SETTINGS_MENU = [
+  ['form', 'Form Settings', 'Customize form status and properties', 'forms'],
+  ['conditions', 'Conditions', 'Set up conditional logic', 'logic'],
+  ['emails', 'Emails', 'Send autoresponders and notifications', 'inbox'],
+  ['notifications', 'Notifications', 'Receive submission notifications', 'sparkles'],
+  ['integrations', 'Integrations', 'Connect your form to other apps', 'apps'],
+  ['thankyou', 'Thank You Page', 'Show page after submission', 'check'],
+  ['documents', 'Documents', 'Turn submissions into documents', 'forms'],
+  ['workflows', 'Workflows', 'Automate tasks after submissions', 'redo'],
+];
+const MORE = [['payments', 'Payments'], ['translations', 'Translations'], ['agent', 'AI Agent']];
 
-  const Tokens = () => (
-    <div className="hint" style={{ marginTop: 6 }}>
-      Insert answers: <code>{'{form_title}'}</code> <code>{'{all_fields}'}</code>{' '}
-      {tokens.map((f) => <code key={f.id} title={f.label} style={{ marginRight: 4 }}>{`{${f.id}}`}</code>)}
-    </div>
-  );
-
+function Toggle({ on, onChange, label, disabled }) {
   return (
-    <div className="sidebar-layout">
-      <div className="side-list">
-        {SECTIONS.map(([k, l]) => <button key={k} className={sec === k ? 'active' : ''} onClick={() => setSec(k)}>{l}</button>)}
-      </div>
-      <div className="panel" style={{ maxWidth: 760 }}>
-        {sec === 'general' && (
-          <>
-            <h2>General</h2>
-            <label className="lbl">Close form on date</label>
-            <input type="datetime-local" value={s.closeDate || ''} onChange={(e) => set({ closeDate: e.target.value })} style={{ maxWidth: 260 }} />
-            <label className="lbl">Limit total submissions</label>
-            <input type="number" value={s.maxSubmissions || ''} onChange={(e) => set({ maxSubmissions: e.target.value })} style={{ maxWidth: 160 }} placeholder="No limit" />
-            <label className="lbl">Message when closed</label>
-            <input value={s.closedMessage || ''} onChange={(e) => set({ closedMessage: e.target.value })} />
-            <label className="lbl">Password protection</label>
-            <input value={s.password || ''} onChange={(e) => set({ password: e.target.value })} placeholder="Leave empty for no password" style={{ maxWidth: 260 }} />
-            <label className="row" style={{ marginTop: 12 }}><input type="checkbox" checked={!!s.saveAndContinue} onChange={(e) => set({ saveAndContinue: e.target.checked })} /> Allow "Save and continue later" (multi-page forms)</label>
-            <label className="row" style={{ marginTop: 6 }}><input type="checkbox" checked={!!s.oneSubmissionPerUser} onChange={(e) => set({ oneSubmissionPerUser: e.target.checked })} /> One submission per user (by IP address)</label>
-            <label className="row" style={{ marginTop: 6 }}><input type="checkbox" checked={s.showProgress !== false} onChange={(e) => set({ showProgress: e.target.checked })} /> Show progress bar</label>
-            <p className="hint" style={{ marginTop: 16 }}>Enable/disable the form from My Forms → More.</p>
-          </>
-        )}
-        {sec === 'thankyou' && (
-          <>
-            <h2>Thank You Page</h2>
-            <label className="lbl">Message after submission</label>
-            <textarea rows={5} value={s.thankYou?.message || ''} onChange={(e) => setIn('thankYou', { message: e.target.value })} />
-            <label className="lbl">…or redirect to URL</label>
-            <input value={s.thankYou?.redirect || ''} onChange={(e) => setIn('thankYou', { redirect: e.target.value })} placeholder="https://example.com/thanks" />
-            <p className="hint">Conditions can override the message or redirect per answer (Conditions tab).</p>
-          </>
-        )}
-        {sec === 'emails' && (
-          <>
-            <h2>Notification e-mail (to you)</h2>
-            <label className="row"><input type="checkbox" checked={!!s.notify?.enabled} onChange={(e) => setIn('notify', { enabled: e.target.checked })} /> Send me an e-mail for every submission</label>
-            <label className="row" style={{ marginTop: 6 }}><input type="checkbox" checked={!!s.notify?.attachPdf} onChange={(e) => setIn('notify', { attachPdf: e.target.checked })} /> Attach the submission PDF</label>
-            <label className="lbl">Recipient(s)</label>
-            <input value={s.notify?.to || ''} onChange={(e) => setIn('notify', { to: e.target.value })} placeholder={me.user.email} />
-            <label className="lbl">Subject</label>
-            <input value={s.notify?.subject || ''} onChange={(e) => setIn('notify', { subject: e.target.value })} />
-            <Tokens />
-            <h2 style={{ marginTop: 24 }}>Autoresponder (to the respondent)</h2>
-            <label className="row"><input type="checkbox" checked={!!s.autoresponder?.enabled} onChange={(e) => setIn('autoresponder', { enabled: e.target.checked })} /> Send a confirmation e-mail</label>
-            <label className="row" style={{ marginTop: 6 }}><input type="checkbox" checked={!!s.autoresponder?.attachPdf} onChange={(e) => setIn('autoresponder', { attachPdf: e.target.checked })} /> Attach a PDF copy of their answers</label>
-            <label className="lbl">Send to the address in</label>
-            <select value={s.autoresponder?.emailField || ''} onChange={(e) => setIn('autoresponder', { emailField: e.target.value })}>
-              <option value="">— choose an Email field —</option>
-              {emailFields.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
-            </select>
-            <label className="lbl">Subject</label>
-            <input value={s.autoresponder?.subject || ''} onChange={(e) => setIn('autoresponder', { subject: e.target.value })} />
-            <label className="lbl">Body</label>
-            <textarea rows={7} value={s.autoresponder?.body || ''} onChange={(e) => setIn('autoresponder', { body: e.target.value })} />
-            <Tokens />
-            <p className="hint">{me.email ? 'E-mails are delivered via your SMTP server and logged in the ' : 'SMTP is not configured: e-mails are only recorded in the '}<a href="#/account/outbox">Outbox</a>.{!me.email && <> Set <code>SMTP_HOST</code>, <code>SMTP_USER</code>, <code>SMTP_PASS</code> and <code>SMTP_FROM</code> in <code>.env</code> to send them.</>}</p>
-          </>
-        )}
-        {sec === 'approvals' && (
-          <>
-            <h2>Approval workflow</h2>
-            <label className="row"><input type="checkbox" checked={!!s.approvals?.enabled} onChange={(e) => setIn('approvals', { enabled: e.target.checked })} /> Require approval for each submission</label>
-            <label className="lbl">Approvers (comma-separated e-mails)</label>
-            <input value={s.approvals?.approvers || ''} onChange={(e) => setIn('approvals', { approvers: e.target.value })} placeholder={me.user.email} />
-            <p className="hint">Each approver gets a secure link to approve or reject without logging in. The respondent is notified of the decision. You can also decide from the Inbox.</p>
-          </>
-        )}
-        {sec === 'payments' && (
-          <>
-            <h2>Payments</h2>
-            <p>Add a <b>Product List</b> field in the builder to sell products, tickets or collect donations. Totals are always recalculated on the server.</p>
-            <p>Gateway: {me.stripe ? <span className="pill green">Stripe Checkout (live keys from server .env)</span> : <span className="pill amber">Test mode — payments are simulated</span>}</p>
-            {!me.stripe && <p className="hint">Set <code>STRIPE_SECRET_KEY</code> in <code>.env</code> and restart the server to accept real card payments.</p>}
-            <p className="hint">Payment submissions this month: {me.usage.paymentsPerMonth} / {me.plan.paymentsPerMonth ?? '∞'}</p>
-          </>
-        )}
-        {sec === 'pdf' && (
-          <>
-            <h2>PDF Document</h2>
-            <p className="hint">Every submission can be downloaded as a designed PDF from the Inbox, and attached to e-mails (Emails section).</p>
-            <label className="lbl">Document title</label>
-            <input value={def.pdf?.title ?? '{form_title}'} onChange={(e) => setPdf({ title: e.target.value })} />
-            <label className="lbl">Introduction text</label>
-            <textarea rows={3} value={def.pdf?.intro || ''} onChange={(e) => setPdf({ intro: e.target.value })} placeholder="Shown above the answers" />
-            <label className="lbl">Footer</label>
-            <input value={def.pdf?.footer || ''} onChange={(e) => setPdf({ footer: e.target.value })} placeholder="e.g. Company Ltd - Confidential" />
-            <div className="grid2">
-              <div><label className="lbl">Accent color</label><input type="color" value={def.pdf?.color || def.theme?.primary || '#0a1551'} onChange={(e) => setPdf({ color: e.target.value })} /></div>
-              <div><label className="lbl">Logo URL (PNG/JPG)</label><input value={def.pdf?.logo ?? def.theme?.logo ?? ''} onChange={(e) => setPdf({ logo: e.target.value })} /></div>
-            </div>
-            <label className="row" style={{ marginTop: 10 }}><input type="checkbox" checked={def.pdf?.includeMeta !== false} onChange={(e) => setPdf({ includeMeta: e.target.checked })} /> Show submission ID and date</label>
-            <label className="row" style={{ marginTop: 6 }}><input type="checkbox" checked={!!def.pdf?.showEmpty} onChange={(e) => setPdf({ showEmpty: e.target.checked })} /> Include unanswered questions</label>
-            <p className="hint">Placeholders: <code>{'{form_title}'}</code> <code>{'{submission_id}'}</code> <code>{'{date}'}</code></p>
-          </>
-        )}
-        {sec === 'translations' && <Translations def={def} update={update} me={me} formId={formId} />}
-        {sec === 'agent' && (
-          <>
-            <h2>AI Agent</h2>
-            <p className="hint">Respondents can fill the form by chatting with an AI assistant instead of clicking through fields. Answers are validated exactly like the regular form. File uploads, signatures and payments are finished in the form.</p>
-            {!me.ai && <p className="error">Set <code>ANTHROPIC_API_KEY</code> in <code>.env</code> and restart the server to use the AI agent.</p>}
-            <label className="row"><input type="checkbox" checked={!!s.agent?.enabled} onChange={(e) => setIn('agent', { enabled: e.target.checked })} /> Offer "Chat with AI" on this form</label>
-            <label className="lbl">Personality / instructions</label>
-            <textarea rows={3} value={s.agent?.persona || ''} onChange={(e) => setIn('agent', { persona: e.target.value })} placeholder="friendly and concise; speak like a hotel concierge" />
-            <p className="hint">Link straight to chat mode: <code>/f/&lt;form id&gt;?mode=chat</code></p>
-          </>
-        )}
-        {sec === 'integrations' && (
-          <>
-            <h2>Integrations</h2>
-            {[['slack', 'Slack', 'Incoming webhook URL (https://hooks.slack.com/services/...)'], ['discord', 'Discord', 'Channel webhook URL (https://discord.com/api/webhooks/...)'], ['sheets', 'Google Sheets', 'Apps Script web app URL (https://script.google.com/macros/s/.../exec)']].map(([k, name, ph]) => (
-              <div key={k} className="panel" style={{ padding: 12 }}>
-                <label className="row"><input type="checkbox" checked={!!s.integrations?.[k]?.enabled} onChange={(e) => setInteg(k, { enabled: e.target.checked })} /> <b>{name}</b></label>
-                <input style={{ marginTop: 6 }} value={s.integrations?.[k]?.url || ''} placeholder={ph} onChange={(e) => setInteg(k, { url: e.target.value })} />
-                {k === 'sheets' && (
-                  <details style={{ marginTop: 6 }}>
-                    <summary className="hint">Setup: paste this script in your Sheet (Extensions → Apps Script), then Deploy → Web app (access: anyone)</summary>
-                    <pre>{SHEETS_SCRIPT}</pre>
-                  </details>
-                )}
-              </div>
-            ))}
-            <h3 style={{ marginTop: 16 }}>Webhooks</h3>
-            <p className="hint">Each submission is POSTed as JSON to these URLs (Zapier, Make, n8n, your own API...).</p>
-            {(s.webhooks || []).map((u, i) => (
-              <div className="opt-row" key={i}>
-                <input value={u} onChange={(e) => set({ webhooks: s.webhooks.map((x, j) => (j === i ? e.target.value : x)) })} />
-                <button className="small danger" onClick={() => set({ webhooks: s.webhooks.filter((_, j) => j !== i) })}>✕</button>
-              </div>
-            ))}
-            <button className="small" onClick={() => set({ webhooks: [...(s.webhooks || []), 'https://'] })}>+ Add webhook</button>
-            <pre style={{ marginTop: 16 }}>{'POST <your url>\n{\n  "event": "submission.created",\n  "formId": "...", "formTitle": "...", "submissionId": 12,\n  "data": { "<fieldId>": <value>, ... },\n  "payment": { "status": "paid", "amount": 62, "currency": "USD" } | null\n}'}</pre>
-          </>
-        )}
-      </div>
+    <button role="switch" aria-checked={!!on} aria-label={label} disabled={disabled} className={`wg-switch ${on ? 'on' : ''}`} onClick={() => onChange(!on)}>
+      <span className="wg-knob" aria-hidden="true" />{on ? 'On' : 'Off'}
+    </button>
+  );
+}
+
+function Title({ icon, color, title, desc, children }) {
+  return (
+    <div className="settings-title">
+      <span className="settings-icon" style={color ? { background: color } : undefined}><Icon name={icon} /></span>
+      <div><h2>{title}</h2><p>{desc}</p></div>
+      {children}
     </div>
   );
 }
+
+function FormSettings({ def, update, s, set, form, onStatus }) {
+  const [more, setMore] = useState(false);
+  const [statusOpen, setStatusOpen] = useState(false);
+  const status = form.status === 'enabled' ? (s.closeDate ? 'date' : s.maxSubmissions ? 'limit' : 'enabled') : 'disabled';
+  const STATUS = {
+    enabled: ['Enabled', 'Your form is visible and accepting submissions'],
+    disabled: ['Disabled', 'Your form is not accepting submissions'],
+    date: ['Disable on date', `Closes ${s.closeDate ? new Date(s.closeDate).toLocaleString() : ''}`],
+    limit: ['Disable on submission limit', `Closes after ${s.maxSubmissions} submissions`],
+  };
+  const choose = async (k) => {
+    if (k === 'disabled') await onStatus('disabled');
+    else {
+      if (form.status !== 'enabled') await onStatus('enabled');
+      set({ closeDate: k === 'date' ? s.closeDate || new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 16) : '', maxSubmissions: k === 'limit' ? s.maxSubmissions || 100 : '' });
+    }
+    setStatusOpen(false);
+  };
+  return (
+    <div className="settings-pane">
+      <Title icon="forms" color="#ea580c" title="Form Settings" desc="Customize form status and properties" />
+      <div className="panel settings-card">
+        <div className="set-row col">
+          <b>Title</b><span className="hint">Enter a name for your form</span>
+          <input value={def.title} onChange={(e) => update((d) => ({ ...d, title: e.target.value }))} />
+        </div>
+        <div className="set-row col">
+          <b>Form Status</b><span className="hint">Enable, disable, or conditionally enable your form</span>
+          <button className={`status-card ${status === 'disabled' ? 'off' : ''}`} aria-expanded={statusOpen} onClick={() => setStatusOpen(!statusOpen)}>
+            <span className="status-dot" aria-hidden="true"><Icon name={status === 'disabled' ? 'lock' : 'check'} size={16} /></span>
+            <span className="grow" style={{ textAlign: 'left' }}><b className="status-label">{STATUS[status][0]}</b><span className="hint" style={{ display: 'block' }}>{STATUS[status][1]}</span></span>
+            <Icon name="down" size={16} />
+          </button>
+          {statusOpen && (
+            <div className="stack">
+              {Object.entries(STATUS).map(([k, [l, d]]) => (
+                <button key={k} className={`type-card ${status === k ? 'on' : ''}`} onClick={() => choose(k)}>
+                  <span className="grow" style={{ textAlign: 'left' }}><b>{l}</b><span className="hint" style={{ display: 'block' }}>{k === 'enabled' ? 'Always accept submissions' : k === 'disabled' ? 'Stop accepting submissions now' : k === 'date' ? 'Stop on a date and time you choose' : 'Stop after a number of submissions'}</span></span>
+                </button>
+              ))}
+            </div>
+          )}
+          {status === 'date' && <input type="datetime-local" aria-label="Close date" value={s.closeDate || ''} onChange={(e) => set({ closeDate: e.target.value })} style={{ maxWidth: 260 }} />}
+          {status === 'limit' && <input type="number" aria-label="Submission limit" min="1" value={s.maxSubmissions || ''} onChange={(e) => set({ maxSubmissions: e.target.value })} style={{ maxWidth: 160 }} />}
+        </div>
+        <div className="set-row">
+          <div className="grow"><b>Encrypt Form Data</b><div className="hint">Encrypt responses so only you can read them. Coming soon.</div></div>
+          <Toggle on={false} onChange={() => {}} label="Encrypt form data" disabled />
+        </div>
+        <div className="set-row">
+          <div className="grow"><b>Draft Mode</b><div className="hint">Edit in draft and publish changes when ready. Today every edit autosaves to the live form; use History to roll back.</div></div>
+          <Toggle on={false} onChange={() => {}} label="Draft mode" disabled />
+        </div>
+      </div>
+      <button className="primary" style={{ alignSelf: 'flex-start' }} onClick={() => setMore(!more)} aria-expanded={more}>{more ? 'Show fewer options' : 'Show more options'}</button>
+      {more && (
+        <div className="panel settings-card">
+          <div className="set-row col"><b>Message when closed</b><input value={s.closedMessage || ''} onChange={(e) => set({ closedMessage: e.target.value })} /></div>
+          <div className="set-row col"><b>Password protection</b><span className="hint">Respondents need this password to open the form</span><input value={s.password || ''} placeholder="No password" onChange={(e) => set({ password: e.target.value })} style={{ maxWidth: 280 }} /></div>
+          <div className="set-row col"><b>Submit button text</b><input value={s.submitLabel || ''} placeholder="Submit" onChange={(e) => set({ submitLabel: e.target.value })} style={{ maxWidth: 280 }} /></div>
+          <div className="set-row"><div className="grow"><b>Save and continue later</b><div className="hint">Respondents get a link to finish multi-page forms later</div></div><Toggle on={s.saveAndContinue} onChange={(v) => set({ saveAndContinue: v })} label="Save and continue later" /></div>
+          <div className="set-row"><div className="grow"><b>One submission per person</b><div className="hint">Blocks repeat submissions from the same IP address</div></div><Toggle on={s.oneSubmissionPerUser} onChange={(v) => set({ oneSubmissionPerUser: v })} label="One submission per person" /></div>
+          <div className="set-row"><div className="grow"><b>Progress bar</b><div className="hint">Show progress on multi-page and card forms</div></div><Toggle on={s.showProgress !== false} onChange={(v) => set({ showProgress: v })} label="Progress bar" /></div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ThankYou({ def, s, setIn }) {
+  const ty = s.thankYou || {};
+  const mode = ty.mode || (ty.redirect ? 'redirect' : 'page');
+  const fields = def.fields.filter((f) => !isDisplay(f));
+  return (
+    <div className="settings-pane">
+      <Title icon="check" color="#16a34a" title="Thank You Page" desc="Choose an action after submission" />
+      <div className="grid2" role="radiogroup" aria-label="After submission">
+        {[['page', 'Show a Thank You page after submission'], ['redirect', 'Redirect to an external link after submission']].map(([k, l]) => (
+          <button key={k} role="radio" aria-checked={mode === k} className={`type-card ${mode === k ? 'on' : ''}`} onClick={() => setIn('thankYou', { mode: k })}>
+            <span className={`radio-dot ${mode === k ? 'on' : ''}`} aria-hidden="true" /><span className="grow" style={{ textAlign: 'left' }}>{l}</span>
+          </button>
+        ))}
+      </div>
+      {mode === 'page' ? (
+        <>
+          <RichText label="Thank-you page" value={looksLikeHtml(ty.message) ? ty.message : `<div style="text-align: center"><h1>Thank You!</h1><p>${(ty.message || 'Your submission has been received.').replace(/</g, '&lt;')}</p></div>`} onChange={(message) => setIn('thankYou', { message })} fields={fields} minHeight={240} />
+          <p className="hint">Use the Fields menu to greet people with their answers, e.g. “Thanks, {'{name}'}!”. Conditions can show a different message per answer.</p>
+        </>
+      ) : (
+        <div className="panel settings-card">
+          <div className="set-row col"><b>Redirect URL</b><span className="hint">Respondents go here after submitting</span><input value={ty.redirect || ''} placeholder="https://example.com/thanks" onChange={(e) => setIn('thankYou', { redirect: e.target.value })} /></div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Documents({ def, setPdf }) {
+  return (
+    <div className="settings-pane">
+      <Title icon="forms" color="#0369a1" title="Documents" desc="Turn submissions into documents" />
+      <div className="panel settings-card">
+        <div className="set-row col"><b>Document title</b><input value={def.pdf?.title ?? '{form_title}'} onChange={(e) => setPdf({ title: e.target.value })} /></div>
+        <div className="set-row col"><b>Introduction</b><textarea rows={3} value={def.pdf?.intro || ''} onChange={(e) => setPdf({ intro: e.target.value })} placeholder="Shown above the answers" /></div>
+        <div className="set-row col"><b>Footer</b><input value={def.pdf?.footer || ''} onChange={(e) => setPdf({ footer: e.target.value })} placeholder="e.g. Company Ltd — Confidential" /></div>
+        <div className="set-row">
+          <div className="grow"><b>Accent colour</b></div>
+          <input type="color" aria-label="Accent colour" value={def.pdf?.color || def.theme?.primary || '#0f766e'} onChange={(e) => setPdf({ color: e.target.value })} style={{ maxWidth: 80 }} />
+        </div>
+        <div className="set-row col"><b>Logo URL (PNG or JPG)</b><input value={def.pdf?.logo ?? def.theme?.logo ?? ''} onChange={(e) => setPdf({ logo: e.target.value })} /></div>
+        <div className="set-row"><div className="grow"><b>Show submission ID and date</b></div><Toggle on={def.pdf?.includeMeta !== false} onChange={(v) => setPdf({ includeMeta: v })} label="Show submission ID and date" /></div>
+        <div className="set-row"><div className="grow"><b>Include unanswered questions</b></div><Toggle on={!!def.pdf?.showEmpty} onChange={(v) => setPdf({ showEmpty: v })} label="Include unanswered questions" /></div>
+      </div>
+      <p className="hint">Every submission can be viewed or downloaded as this PDF from the Inbox, and attached to e-mails (Emails → Attach submission PDF). Placeholders: <code>{'{form_title}'}</code> <code>{'{submission_id}'}</code> <code>{'{date}'}</code>. Uploading your own document template is coming soon.</p>
+    </div>
+  );
+}
+
+export default function SettingsPanel({ def, update, me, formId, form, section = 'form', onStatus, workflowsPane }) {
+  const s = def.settings || {};
+  const set = (patch) => update((d) => ({ ...d, settings: { ...d.settings, ...patch } }));
+  const setIn = (k, patch) => set({ [k]: { ...(s[k] || {}), ...patch } });
+  const setPdf = (patch) => update((d) => ({ ...d, pdf: { ...(d.pdf || {}), ...patch } }));
+  const go = (k) => { window.location.hash = `#/forms/${formId}/settings/${k}`; };
+
+  let body;
+  switch (section) {
+    case 'conditions': body = <Conditions def={def} update={update} formId={formId} me={me} workflows={def.workflows || []} />; break;
+    case 'emails': body = <Emails def={def} update={update} formId={formId} me={me} />; break;
+    case 'notifications': body = <Notifications def={def} update={update} />; break;
+    case 'thankyou': body = <ThankYou def={def} s={s} setIn={setIn} />; break;
+    case 'documents': body = <Documents def={def} setPdf={setPdf} />; break;
+    case 'workflows': body = workflowsPane; break;
+    case 'integrations':
+      body = <Integrations def={def} update={update} formId={formId} />;
+      break;
+    case 'payments':
+      body = (
+        <div className="settings-pane">
+          <Title icon="apps" color="#15803d" title="Payments" desc="Gateway and payment settings" />
+          <div className="panel settings-card">
+            <div className="set-row col">
+              <b>Gateway</b>
+              <span className="hint">Choose the gateway on the builder's Payments tab. Current: <b>{{ test: 'Test mode', stripe: 'Stripe', purchaseOrder: 'Purchase Order' }[s.payment?.provider] || 'Test mode'}</b>{s.payment?.provider !== 'purchaseOrder' && (me.stripe ? ' — Stripe keys found, so card payments go through Stripe Checkout.' : ' — no Stripe key, so payments are simulated.')}</span>
+            </div>
+            <div className="set-row"><div className="grow"><b>Payment submissions this month</b></div><span>{me.usage.paymentsPerMonth} / {me.plan.paymentsPerMonth ?? '∞'}</span></div>
+          </div>
+        </div>
+      );
+      break;
+    case 'translations': body = <div className="settings-pane"><div className="panel"><Translations def={def} update={update} me={me} formId={formId} /></div></div>; break;
+    case 'agent':
+      body = (
+        <div className="settings-pane">
+          <Title icon="sparkles" color="#0f766e" title="AI Agent" desc="Let respondents fill the form by chatting" />
+          <div className="panel settings-card">
+            {!me.ai && <p className="error">Set <code>ANTHROPIC_API_KEY</code> in <code>.env</code> and restart the server to use the AI agent.</p>}
+            <div className="set-row"><div className="grow"><b>Offer “Chat with AI”</b><div className="hint">Answers are validated exactly like the form. Uploads, signatures and payments finish in the form.</div></div><Toggle on={s.agent?.enabled} onChange={(v) => setIn('agent', { enabled: v })} label="Chat with AI" /></div>
+            <div className="set-row col"><b>Personality / instructions</b><textarea rows={3} value={s.agent?.persona || ''} onChange={(e) => setIn('agent', { persona: e.target.value })} placeholder="friendly and concise; speak like a hotel concierge" /></div>
+            <p className="hint">Link straight to chat: <code>/f/{formId}?mode=chat</code></p>
+          </div>
+        </div>
+      );
+      break;
+    default: body = <FormSettings def={def} update={update} s={s} set={set} form={form} onStatus={onStatus} />;
+  }
+
+  return (
+    <div className="settings-layout">
+      <nav className="settings-nav" aria-label="Settings">
+        {SETTINGS_MENU.map(([k, l, d, icon]) => (
+          <a key={k} href={`#/forms/${formId}/settings/${k}`} className={section === k ? 'active' : ''} aria-current={section === k ? 'page' : undefined}>
+            <Icon name={icon} size={18} />
+            <span><b>{l}</b><span>{d}</span></span>
+            {k === 'conditions' && (def.logic || []).length > 0 && <span className="badge">{def.logic.length}</span>}
+          </a>
+        ))}
+        <div className="settings-more">More</div>
+        {MORE.map(([k, l]) => <a key={k} href={`#/forms/${formId}/settings/${k}`} className={`small-link ${section === k ? 'active' : ''}`}>{l}</a>)}
+      </nav>
+      <div className="settings-main">{body}</div>
+      <button className="sr-only" onClick={() => go('form')}>Back to form settings</button>
+    </div>
+  );
+}
+

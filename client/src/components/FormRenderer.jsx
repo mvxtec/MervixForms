@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { computeState, buildPages, validateField } from '@shared/logic.js';
-import { isDisplay, isInput } from '@shared/fields.js';
+import { isDisplay, isInput, formatValue } from '@shared/fields.js';
+import { sanitizeHtml, escapeHtml, looksLikeHtml } from '../sanitize.js';
 import { widgetKind } from '@shared/widgets.js';
 import { FieldInput, DisplayBlock } from './Fields.jsx';
 import { api } from '../api.js';
@@ -15,6 +16,20 @@ export function themeStyle(theme = {}) {
     fontFamily: theme.font && theme.font !== 'System' ? `${theme.font}, system-ui, sans-serif` : undefined,
   };
 }
+
+// Condition effects that change how a field renders: replaced options, hidden products, input masks.
+function withRuleEffects(f, state) {
+  let out = f;
+  if (state.options?.[f.id]) out = { ...out, options: state.options[f.id] };
+  if (state.hiddenProducts?.[f.id] && f.products) out = { ...out, products: f.products.filter((p) => !state.hiddenProducts[f.id].has(p.id)) };
+  if (state.masks?.[f.id]) out = { ...out, placeholder: state.masks[f.id] };
+  return out;
+}
+
+// {fieldId} tokens in the thank-you message become the respondent's answers (escaped for HTML messages).
+const answerOf = (def, values, id) => { const f = (def.fields || []).find((x) => x.id === id); return f ? formatValue(f, values[id]) : null; };
+const fillTokens = (tpl, def, values) => String(tpl).replace(/\{form_title\}/g, escapeHtml(def.title)).replace(/\{([\w-]+)\}/g, (m, id) => { const v = answerOf(def, values, id); return v == null ? m : escapeHtml(v); });
+const fillTokensText = (tpl, def, values) => String(tpl).replace(/\{form_title\}/g, def.title).replace(/\{([\w-]+)\}/g, (m, id) => answerOf(def, values, id) ?? m);
 
 // Values for metadata widgets, captured when the form opens.
 function metaValue(source) {
@@ -161,7 +176,9 @@ export default function FormRenderer({ def, formId, mode = 'live', branding, ini
         {done ? (
           <div className="wf-thanks" role="status">
             <div className="wf-check"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10" /></svg></div>
-            <div style={{ whiteSpace: 'pre-wrap', fontSize: 18, lineHeight: 1.5 }}>{done.thankYou}</div>
+            {looksLikeHtml(done.thankYou)
+              ? <div className="wf-thanks-html" dangerouslySetInnerHTML={{ __html: sanitizeHtml(fillTokens(done.thankYou, def, state.values)) }} />
+              : <div style={{ whiteSpace: 'pre-wrap', fontSize: 18, lineHeight: 1.5 }}>{fillTokensText(done.thankYou, def, state.values)}</div>}
             {done.preview && <p className="hint">(Preview — nothing was submitted.)</p>}
             {mode !== 'live' && <button className="wf-btn secondary" style={{ marginTop: 16 }} onClick={() => { setDone(null); setPage(0); setHistory([]); setRaw(initialValues(def, {})); }}>Restart preview</button>}
           </div>
@@ -178,7 +195,9 @@ export default function FormRenderer({ def, formId, mode = 'live', branding, ini
                 ) : isDisplay(f) ? <DisplayBlock f={f} /> : f.type === 'hidden' ? null : (
                   <>
                     {f.type !== 'terms' && <label className="wf-label">{f.label}{state.required.has(f.id) && <span className="wf-req">*</span>}</label>}
-                    <FieldInput f={f} value={raw[f.id]} computed={state.values[f.id]} onChange={(v) => set(f.id, v)} formId={formId} mode={mode} />
+                    <fieldset disabled={state.disabled?.has(f.id)} className="wf-fieldset">
+                      <FieldInput f={withRuleEffects(f, state)} value={raw[f.id]} computed={state.values[f.id]} onChange={(v) => set(f.id, v)} formId={formId} mode={mode} />
+                    </fieldset>
                     {f.description && <div className="wf-desc">{f.description}</div>}
                     {errors[f.id] && <div className="wf-err">{errors[f.id]}</div>}
                   </>
