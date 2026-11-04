@@ -5,10 +5,30 @@ import { hashPassword, verifyPassword, issueSession, clearSession, requireAuth, 
 import { deliver, BASE_URL, emailEnabled } from '../notify.js';
 import { PLANS, planOf, serializePlan } from '../../shared/plans.js';
 import { stripeEnabled } from '../payments.js';
+import { hmac, sameSig } from '../secrets.js';
+import { limit, loginLocked, recordLoginFailure, clearLoginFailures, lockedResponse } from '../ratelimit.js';
 
 const r = Router();
 
-r.post('/auth/register', (req, res) => {
+// E-mail verification: a signed, expiring link proves the person owns the address. Team invites and
+// workflow tasks addressed to an e-mail are only honoured once it is verified.
+const VERIFY_MS = 3 * 24 * 3600 * 1000;
+const verifySig = (id, email, exp) => hmac('verify', `${id}.${email}.${exp}`);
+export function sendVerification(user) {
+  const exp = Date.now() + VERIFY_MS;
+  const url = `${BASE_URL()}/#/verify/${user.id}.${exp}.${verifySig(user.id, user.email, exp)}`;
+  deliver(user.id, null, user.email, 'Confirm your e-mail address',
+    `Confirm that ${user.email} is your address to finish setting up your account:\n\n${url}\n\nThe link works for 3 days. If you didn't sign up, ignore this e-mail.`);
+}
+
+// Plan changes are made by the operator until billing is connected (SUPER_ADMIN_EMAILS, plus ADMIN_EMAIL).
+const superAdmins = () => new Set([...String(process.env.SUPER_ADMIN_EMAILS || '').split(','), process.env.ADMIN_EMAIL || ''].map((e) => e.trim().toLowerCase()).filter(Boolean));
+export const isSuperAdmin = (email) => superAdmins().has(String(email || '').toLowerCase());
+
+const registerLimit = limit({ name: 'register', max: 10, windowMs: 60 * 60 * 1000, message: 'Too many sign-ups from this network. Try again later.' });
+const loginLimit = limit({ name: 'login', max: 30, windowMs: 15 * 60 * 1000, message: 'Too many sign-in attempts. Please wait a few minutes.' });
+
+r.post('/auth/register', registerLimit, (req, res) => {
   const { email, password, name } = req.body || {};
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email || '')) return res.status(400).json({ error: 'Enter a valid e-mail.' });
   if (typeof password !== 'string' || password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters.' });
@@ -16,11 +36,11 @@ r.post('/auth/register', (req, res) => {
   if (db.prepare('SELECT 1 FROM users WHERE email = ?').get(email.toLowerCase())) return res.status(409).json({ error: 'An account with this e-mail already exists.' });
   const { lastInsertRowid } = db.prepare('INSERT INTO users (email, name, password_hash) VALUES (?, ?, ?)').run(email.toLowerCase(), name || '', hashPassword(password));
   issueSession(res, Number(lastInsertRowid));
-  acceptInvites(Number(lastInsertRowid), email.toLowerCase());
+  sendVerification({ id: Number(lastInsertRowid), email: email.toLowerCase() });
   res.json({ ok: true });
 });
 
-// Invites addressed to this e-mail turn into memberships automatically.
+// Invites addressed to this e-mail turn into memberships once the address is verified.
 function acceptInvites(userId, email) {
   for (const inv of db.prepare('SELECT * FROM team_invites WHERE email = ?').all(email)) {
     if (inv.owner_id !== userId) db.prepare('INSERT OR IGNORE INTO team_members (owner_id, user_id, role) VALUES (?, ?, ?)').run(inv.owner_id, userId, inv.role);
@@ -28,20 +48,45 @@ function acceptInvites(userId, email) {
   }
 }
 
-r.post('/auth/login', (req, res) => {
+r.post('/auth/login', loginLimit, (req, res) => {
   const { email, password } = req.body || {};
-  const u = db.prepare('SELECT * FROM users WHERE email = ?').get(String(email || '').toLowerCase());
-  if (!u || !verifyPassword(String(password || ''), u.password_hash)) return res.status(401).json({ error: 'Incorrect e-mail or password.' });
+  const addr = String(email || '').toLowerCase();
+  const locked = loginLocked(addr);
+  if (locked) return lockedResponse(res, locked);
+  const u = db.prepare('SELECT * FROM users WHERE email = ?').get(addr);
+  if (!u || !verifyPassword(String(password || ''), u.password_hash)) {
+    recordLoginFailure(addr);
+    return res.status(401).json({ error: 'Incorrect e-mail or password.' });
+  }
+  clearLoginFailures(addr);
   issueSession(res, u.id);
-  acceptInvites(u.id, u.email);
+  if (u.email_verified_at) acceptInvites(u.id, u.email);
   res.json({ ok: true });
+});
+
+const verifyLimit = limit({ name: 'verify', max: 20, windowMs: 15 * 60 * 1000 });
+r.post('/auth/verify', verifyLimit, (req, res) => {
+  const [id, exp, sig] = String(req.body?.token || '').split('.');
+  const u = /^\d+$/.test(id || '') && db.prepare('SELECT id, email, email_verified_at FROM users WHERE id = ?').get(Number(id));
+  if (!u || !sameSig(sig, verifySig(u.id, u.email, exp))) return res.status(400).json({ error: 'This confirmation link is not valid. Request a new one from your account.' });
+  if (Number(exp) < Date.now()) return res.status(410).json({ error: 'This confirmation link has expired. Request a new one from your account.' });
+  if (!u.email_verified_at) db.prepare("UPDATE users SET email_verified_at = datetime('now') WHERE id = ?").run(u.id);
+  acceptInvites(u.id, u.email);
+  res.json({ ok: true, email: u.email });
+});
+
+const resendLimit = limit({ name: 'verify-resend', max: 5, windowMs: 60 * 60 * 1000, key: (req) => req.user.id, message: 'You can request 5 confirmation e-mails an hour.' });
+r.post('/auth/verify/resend', requireAuth, resendLimit, (req, res) => {
+  if (!req.user.email_verified_at) sendVerification(req.user);
+  res.json({ ok: true, alreadyVerified: !!req.user.email_verified_at });
 });
 
 r.post('/auth/logout', (req, res) => { clearSession(res); res.json({ ok: true }); });
 
 r.get('/me', requireAuth, (req, res) => {
   res.json({
-    user: req.user,
+    user: { id: req.user.id, email: req.user.email, name: req.user.name, plan: req.user.plan, created_at: req.user.created_at, emailVerified: !!req.user.email_verified_at },
+    canChangePlan: isSuperAdmin(req.user.email),
     workspace: { id: req.ws.id, email: req.ws.email, name: req.ws.name, role: req.ws.role },
     workspaces: workspacesOf(req.user).map(({ id, email, name, role }) => ({ id, email, name, role })),
     plan: { key: req.ws.plan, ...serializePlan(planOf(req.ws.plan)) },
@@ -74,15 +119,17 @@ r.post('/team/invite', requireAuth, requireRole('admin'), (req, res) => {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: 'Enter a valid e-mail.' });
   if (!planOf(req.ws.plan).multiUser) return res.status(402).json({ error: 'Team members require the Enterprise plan.', upgrade: true });
   if (email === req.ws.owner.email) return res.status(400).json({ error: 'That is the workspace owner.' });
-  const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
+  // Only an account that has proved it owns the address joins straight away; otherwise the invite waits.
+  const existing = db.prepare('SELECT id FROM users WHERE email = ? AND email_verified_at IS NOT NULL').get(email);
   if (existing) {
     db.prepare('INSERT INTO team_members (owner_id, user_id, role) VALUES (?, ?, ?) ON CONFLICT(owner_id, user_id) DO UPDATE SET role = excluded.role').run(req.ws.id, existing.id, role);
     deliver(req.ws.id, null, email, `You were added to ${req.ws.owner.email}'s workspace`, `${req.user.email} added you as ${role}. Switch workspaces from the top bar: ${BASE_URL()}`);
     return res.json({ ok: true, added: true });
   }
   const token = crypto.randomBytes(16).toString('hex');
+  db.prepare('DELETE FROM team_invites WHERE owner_id = ? AND email = ?').run(req.ws.id, email); // re-invite replaces
   db.prepare('INSERT INTO team_invites (token, owner_id, email, role) VALUES (?, ?, ?, ?)').run(token, req.ws.id, email, role);
-  deliver(req.ws.id, null, email, `Invitation to join ${req.ws.owner.email}'s workspace`, `${req.user.email} invited you as ${role}. Create an account with this e-mail to join: ${BASE_URL()}`);
+  deliver(req.ws.id, null, email, `Invitation to join ${req.ws.owner.email}'s workspace`, `${req.user.email} invited you as ${role}. Sign up or log in with this e-mail and confirm it to join: ${BASE_URL()}/#/signup`);
   res.json({ ok: true, invited: true });
 });
 
@@ -118,10 +165,11 @@ r.patch('/me', requireAuth, (req, res) => {
   res.json({ ok: true });
 });
 
-// Self-hosted: plan changes are immediate. Hook a billing provider in here if you resell plans.
+// Until billing is connected, only the operator can change plans. Hook a billing webhook in here to sell plans.
 r.post('/me/plan', requireAuth, (req, res) => {
+  if (!isSuperAdmin(req.user.email)) return res.status(403).json({ error: 'Plan changes are handled by your administrator.' });
   const { plan } = req.body || {};
-  if (!PLANS[plan]) return res.status(400).json({ error: 'Unknown plan' });
+  if (typeof plan !== 'string' || !Object.hasOwn(PLANS, plan)) return res.status(400).json({ error: 'Unknown plan' });
   db.prepare('UPDATE users SET plan = ? WHERE id = ?').run(plan, req.user.id);
   res.json({ ok: true });
 });

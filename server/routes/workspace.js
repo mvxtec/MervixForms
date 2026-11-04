@@ -53,6 +53,8 @@ r.patch('/workspace/items/:type/:id', requireAuth, requireRole('editor'), (req, 
 
 // Workflow approvals and tasks waiting on the signed-in person.
 r.get('/tasks/assigned', (req, res) => {
+  // Task links are bearer tokens for whoever owns the address, so only a verified address may list them.
+  if (!req.user.email_verified_at) return res.status(403).json({ error: 'Confirm your e-mail address to see approvals and tasks assigned to it.', needsVerification: true });
   const rows = db.prepare(`SELECT t.kind, t.token, t.created_at, w.title workflow, f.title form, r.submission_id
     FROM workflow_tasks t JOIN workflow_runs r ON r.id = t.run_id JOIN workflows w ON w.id = r.workflow_id LEFT JOIN forms f ON f.id = w.form_id
     WHERE lower(t.assignee) = lower(?) AND t.status = 'pending' AND r.status = 'waiting' ORDER BY t.id DESC LIMIT 200`).all(req.user.email);

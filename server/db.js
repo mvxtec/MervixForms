@@ -250,3 +250,7 @@ for (const t of ['workflows', 'apps', 'sign_docs']) addColumn(t, 'favorite', 'fa
 
 // Sequential Unique ID widget numbers; never reused after a submission is deleted.
 db.exec(`CREATE TABLE IF NOT EXISTS form_counters (form_id TEXT NOT NULL, field_id TEXT NOT NULL, n INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (form_id, field_id))`);
+
+// E-mail verification. The operator account from .env is trusted; everyone else confirms by link.
+addColumn('users', 'email_verified_at', 'email_verified_at TEXT');
+if (process.env.ADMIN_EMAIL) db.prepare("UPDATE users SET email_verified_at = COALESCE(email_verified_at, datetime('now')) WHERE email = ?").run(process.env.ADMIN_EMAIL.trim().toLowerCase());

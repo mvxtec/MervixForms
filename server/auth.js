@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import { db } from './db.js';
+import { hmac, sameSig } from './secrets.js';
 
-const SECRET = process.env.SESSION_SECRET || 'dev-secret-change-me';
 const COOKIE = 'mf_session';
 const MAX_AGE = 30 * 24 * 3600;
 
@@ -16,7 +16,7 @@ export function verifyPassword(pw, stored) {
   return crypto.timingSafeEqual(test, Buffer.from(hash, 'hex'));
 }
 
-const sign = (payload) => crypto.createHmac('sha256', SECRET).update(payload).digest('base64url');
+const sign = (payload) => hmac('session', payload);
 
 export function issueSession(res, userId) {
   const payload = Buffer.from(JSON.stringify({ uid: userId, exp: Date.now() + MAX_AGE * 1000 })).toString('base64url');
@@ -32,13 +32,13 @@ function readCookie(req) {
   if (!raw) return null;
   const [payload, sig] = raw.slice(COOKIE.length + 1).split('.');
   if (!payload || !sig) return null;
-  const expected = sign(payload);
-  if (expected.length !== sig.length || !crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(sig))) return null;
-  const data = JSON.parse(Buffer.from(payload, 'base64url').toString());
+  if (!sameSig(sign(payload), sig)) return null;
+  let data;
+  try { data = JSON.parse(Buffer.from(payload, 'base64url').toString()); } catch { return null; }
   return data.exp > Date.now() ? data.uid : null;
 }
 
-const userById = (id) => db.prepare('SELECT id, email, name, plan, created_at FROM users WHERE id = ?').get(id);
+const userById = (id) => db.prepare('SELECT id, email, name, plan, created_at, email_verified_at FROM users WHERE id = ?').get(id);
 
 const WS_COOKIE = 'mf_ws';
 const cookieValue = (req, name) => (req.headers.cookie || '').split(';').map((c) => c.trim()).find((c) => c.startsWith(`${name}=`))?.slice(name.length + 1);

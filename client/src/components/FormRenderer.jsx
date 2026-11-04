@@ -6,6 +6,7 @@ import { widgetKind } from '@shared/widgets.js';
 import { FieldInput, DisplayBlock } from './Fields.jsx';
 import { api } from '../api.js';
 import Icon from './Icon.jsx';
+import { safeRedirect } from '@shared/urls.js';
 
 export function themeStyle(theme = {}) {
   return {
@@ -136,7 +137,7 @@ export default function FormRenderer({ def, formId, mode = 'live', branding, ini
     try {
       const res = await api(`/public/forms/${formId}/submit`, { method: 'POST', body: { values: raw, password, draftToken: draft.token } });
       if (res.checkoutUrl) { window.location.href = res.checkoutUrl; return; }
-      if (res.redirect) { window.top.location.href = res.redirect; return; }
+      if (safeRedirect(res.redirect)) { window.top.location.href = safeRedirect(res.redirect); return; }
       setDone(res);
     } catch (e) {
       setFormError(e.message);

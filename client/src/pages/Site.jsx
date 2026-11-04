@@ -156,7 +156,7 @@ function Landing({ me }) {
             <article className="bento-cell span-2">
               <span className="bento-kicker"><Icon name="forms" size={16} />Form builder</span>
               <h3>{elementCount} elements, including Indian ID and tax checks</h3>
-              <p>Drag fields onto the page. Validation for Aadhaar, PAN, GSTIN, IFSC and IBAN runs in the browser and again on the server.</p>
+              <p>Drag fields onto the page. Validation for Aadhaar, PAN, GSTIN and IBAN runs in the browser and again on the server.</p>
               <ul className="field-cloud" aria-label="Some of the available elements">
                 {SHOWCASE_FIELDS.map(([icon, label]) => <li key={label}><Icon name={icon} size={14} />{label}</li>)}
               </ul>

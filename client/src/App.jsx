@@ -17,6 +17,7 @@ import { MegaMenus, WorkspaceSwitcher, UserMenu } from './components/SiteMenus.j
 import { switchTo } from './pages/Home.jsx';
 import Logo from './components/Logo.jsx';
 import Icon from './components/Icon.jsx';
+import { VerifyEmail, VerifyBanner } from './pages/Verify.jsx';
 
 const MeContext = createContext(null);
 export const useMe = () => useContext(MeContext);
@@ -72,6 +73,8 @@ export default function App() {
   if (track) return <Track token={track.token} />;
 
   if (me === undefined) return <div className="page muted">Loading…</div>;
+  const verify = match('/verify/:token', route);
+  if (verify) return <VerifyEmail token={verify.token} signedIn={!!me} onDone={refresh} />;
   if (!me) {
     if (page === '/signup' || page === '/login') return <Auth key={page} mode={page.slice(1)} error={query(route).get('error') || ''} onDone={refresh} />;
     if (SITE_PAGES.includes(page)) return <Site me={null} route={route} />;
@@ -98,6 +101,7 @@ export default function App() {
     <MeContext.Provider value={{ ...me, refresh }}>
       <div className="app">
         <AppHeader me={me} view={view} onLogout={logout} />
+        {!me.user.emailVerified && <VerifyBanner me={me} />}
         <main id="main" tabIndex={-1} className="app-body">{body}</main>
       </div>
     </MeContext.Provider>

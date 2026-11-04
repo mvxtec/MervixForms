@@ -9,6 +9,7 @@ import { requireAuth, requireRole } from '../auth.js';
 import { planOf } from '../../shared/plans.js';
 import { deliver, BASE_URL } from '../notify.js';
 import { stampSignedPdf } from '../pdf.js';
+import { fixUploadName } from '../files.js';
 
 const r = Router();
 const upload = multer({ storage: multer.diskStorage({ destination: UPLOAD_DIR, filename: (q, f, cb) => cb(null, crypto.randomBytes(16).toString('hex')) }), limits: { fileSize: 25 * 1024 * 1024 } });
@@ -42,9 +43,9 @@ r.post('/sign/docs', requireAuth, requireRole('editor'), upload.single('file'), 
   const fd = fs.openSync(f.path, 'r'); fs.readSync(fd, head, 0, 5, 0); fs.closeSync(fd);
   if (head.toString() !== '%PDF-') { drop(); return res.status(415).json({ error: 'Only PDF files can be signed.' }); }
   if (getUsage(req.ws.id).uploadBytes + f.size > planOf(req.ws.plan).uploadBytes) { drop(); return res.status(402).json({ error: 'Upload space exceeded for your plan.', upgrade: true }); }
-  db.prepare('INSERT INTO uploads (id, user_id, form_id, name, mime, size) VALUES (?, ?, ?, ?, ?, ?)').run(f.filename, req.ws.id, 'sign', f.originalname, 'application/pdf', f.size);
+  db.prepare('INSERT INTO uploads (id, user_id, form_id, name, mime, size) VALUES (?, ?, ?, ?, ?, ?)').run(f.filename, req.ws.id, 'sign', fixUploadName(f.originalname), 'application/pdf', f.size);
   const id = crypto.randomBytes(7).toString('hex');
-  db.prepare('INSERT INTO sign_docs (id, user_id, title, file_id) VALUES (?, ?, ?, ?)').run(id, req.ws.id, f.originalname.replace(/\.pdf$/i, ''), f.filename);
+  db.prepare('INSERT INTO sign_docs (id, user_id, title, file_id) VALUES (?, ?, ?, ?)').run(id, req.ws.id, fixUploadName(f.originalname).replace(/\.pdf$/i, ''), f.filename);
   res.json({ id });
 });
 

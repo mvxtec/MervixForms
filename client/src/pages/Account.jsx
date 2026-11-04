@@ -38,7 +38,7 @@ function Plan() {
       </div>
       <div className="panel">
         <h2>Plans</h2>
-        <p className="hint">Self-hosted: switching is instant. Connect a billing provider in <code>server/routes/account.js</code> if you sell plans.</p>
+        <p className="hint">{me.canChangePlan ? 'You manage plans for this installation; switching is instant.' : 'To change your plan, contact your administrator.'}</p>
         <div className="table-scroll" style={{ maxHeight: 'none' }}>
           <table className="tbl">
             <thead><tr><th></th>{Object.entries(me.plans).map(([k, p]) => <th key={k} style={{ textAlign: 'center' }}>{p.name}<div style={{ fontSize: 16, color: 'var(--text)' }}>{p.price == null ? 'Custom' : p.price === 0 ? 'Free' : `$${p.price}/mo`}</div></th>)}</tr></thead>
@@ -50,7 +50,7 @@ function Plan() {
               <tr><td>HIPAA features</td>{Object.entries(me.plans).map(([k, p]) => <td key={k} style={{ textAlign: 'center' }}>{p.hipaa ? '✓' : '—'}</td>)}</tr>
               <tr><td></td>{Object.keys(me.plans).map((k) => (
                 <td key={k} style={{ textAlign: 'center' }}>
-                  {me.plan.key === k ? <span className="pill green">Current</span> : ownWs && <button className="small primary" disabled={!!busy} onClick={() => choose(k)}>{busy === k ? '…' : 'Switch'}</button>}
+                  {me.plan.key === k ? <span className="pill green">Current</span> : ownWs && me.canChangePlan && <button className="small primary" disabled={!!busy} onClick={() => choose(k)}>{busy === k ? '…' : 'Switch'}</button>}
                 </td>
               ))}</tr>
             </tbody>

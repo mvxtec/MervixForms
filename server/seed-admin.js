@@ -25,9 +25,9 @@ if (!email || password.length < 8) {
 
 const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
 if (existing) {
-  db.prepare("UPDATE users SET password_hash = ?, plan = 'enterprise' WHERE id = ?").run(hashPassword(password), existing.id);
+  db.prepare("UPDATE users SET password_hash = ?, plan = 'enterprise', email_verified_at = COALESCE(email_verified_at, datetime('now')) WHERE id = ?").run(hashPassword(password), existing.id);
   console.log(`Updated admin ${email} (Enterprise plan).`);
 } else {
-  db.prepare("INSERT INTO users (email, name, password_hash, plan) VALUES (?, 'Admin', ?, 'enterprise')").run(email, hashPassword(password));
+  db.prepare("INSERT INTO users (email, name, password_hash, plan, email_verified_at) VALUES (?, 'Admin', ?, 'enterprise', datetime('now'))").run(email, hashPassword(password));
   console.log(`Created admin ${email} (Enterprise plan).`);
 }

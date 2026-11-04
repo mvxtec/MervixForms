@@ -12,14 +12,16 @@ import { widgetKind } from '../../shared/widgets.js';
 import { afterSubmit, approvalToken, notifyDecision, BASE_URL } from '../notify.js';
 import { stripeEnabled, createCheckout, retrieveCheckout } from '../payments.js';
 import { TEMPLATES } from '../templates.js';
+import { hmac } from '../secrets.js';
+import { sniffType, fixUploadName } from '../files.js';
+import { safeRedirect } from '../../shared/urls.js';
 
 const r = Router();
 
 // Captcha: a signed, short-lived arithmetic challenge. The answer never reaches the client in clear text
 // and each token works once.
-const CAPTCHA_SECRET = process.env.SESSION_SECRET || 'dev-secret-change-me';
 const usedCaptchas = new Map();
-const captchaSig = (answer, exp, nonce) => crypto.createHmac('sha256', CAPTCHA_SECRET).update(`${answer}.${exp}.${nonce}`).digest('base64url');
+const captchaSig = (answer, exp, nonce) => hmac('captcha', `${answer}.${exp}.${nonce}`);
 function checkCaptcha(v) {
   const [exp, nonce, sig] = String(v?.token || '').split('.');
   if (!sig || Number(exp) < Date.now() || usedCaptchas.has(nonce)) return false;
@@ -120,13 +122,15 @@ r.post('/forms/:id/upload', upload.single('file'), (req, res) => {
   const field = form.definition.fields.find((f) => f.id === req.body.field && isUploadField(f));
   if (!field) { drop(); return res.status(400).json({ error: 'Unknown upload field' }); }
   if (file.size > (Number(field.maxSizeMb) || 10) * 1024 * 1024) { drop(); return res.status(413).json({ error: `File exceeds ${field.maxSizeMb} MB.` }); }
+  // Type and filename come from the bytes and the UTF-8 name, not from what the uploader declared.
+  const name = fixUploadName(file.originalname), mime = sniffType(file.path);
   if (field.accept) {
-    const ok = field.accept.split(',').map((x) => x.trim().toLowerCase()).some((a) => file.originalname.toLowerCase().endsWith(a) || (a.endsWith('/*') && file.mimetype.startsWith(a.slice(0, -1))));
+    const ok = field.accept.split(',').map((x) => x.trim().toLowerCase()).some((a) => name.toLowerCase().endsWith(a) || (a.endsWith('/*') && mime.startsWith(a.slice(0, -1))) || a === mime);
     if (!ok) { drop(); return res.status(415).json({ error: `Allowed types: ${field.accept}` }); }
   }
   if (getUsage(owner.id).uploadBytes + file.size > planOf(owner.plan).uploadBytes) { drop(); return res.status(402).json({ error: 'The form owner has run out of upload space.' }); }
-  db.prepare('INSERT INTO uploads (id, user_id, form_id, name, mime, size) VALUES (?, ?, ?, ?, ?, ?)').run(file.filename, owner.id, form.id, file.originalname, file.mimetype, file.size);
-  res.json({ id: file.filename, name: file.originalname, size: file.size, mime: file.mimetype });
+  db.prepare('INSERT INTO uploads (id, user_id, form_id, name, mime, size) VALUES (?, ?, ?, ?, ?, ?)').run(file.filename, owner.id, form.id, name, mime, file.size);
+  res.json({ id: file.filename, name, size: file.size, mime });
 });
 
 // Booked appointment slots for a date, so the form can grey them out.
@@ -287,7 +291,7 @@ r.post('/forms/:id/submit', async (req, res) => {
   if (signed) bumpUsage(owner.id, 'signatures');
   if (req.body?.draftToken) db.prepare('DELETE FROM drafts WHERE token = ?').run(String(req.body.draftToken));
 
-  const result = { id: sub.id, thankYou: state.thankYou || settings.thankYou?.message, redirect: state.redirect || (settings.thankYou?.mode !== 'page' && settings.thankYou?.redirect) || '' };
+  const result = { id: sub.id, thankYou: state.thankYou || settings.thankYou?.message, redirect: safeRedirect(state.redirect || (settings.thankYou?.mode !== 'page' && settings.thankYou?.redirect) || '') };
 
   if (payment?.provider === 'stripe') {
     try {

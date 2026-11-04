@@ -7,6 +7,7 @@ import { PDFDocument } from 'pdf-lib';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'forms-feat-'));
 process.env.DATA_DIR = tmp;
+process.env.SUPER_ADMIN_EMAILS = 'boss@x.io'; // the operator may change plans
 delete process.env.ANTHROPIC_API_KEY;
 delete process.env.SMTP_HOST;
 const { app } = await import('../index.js');
@@ -31,6 +32,13 @@ const browser = () => {
 
 before(() => { server = app.listen(0); base = `http://127.0.0.1:${server.address().port}`; });
 after(() => server.close());
+
+// Opens the confirmation link from the user's outbox (no SMTP in tests).
+async function confirmEmail(b) {
+  const mail = (await b('GET', '/api/outbox')).body.find((m) => m.subject === 'Confirm your e-mail address');
+  const token = mail.body.match(/#\/verify\/(\S+)/)[1];
+  assert.equal((await b('POST', '/api/auth/verify', { token })).status, 200);
+}
 
 test('version history: autosave snapshot, named version, restore', async () => {
   const a = browser();
@@ -95,9 +103,14 @@ test('teams: enterprise owner invites editor and viewer; roles enforced', async 
   assert.equal((await owner('POST', '/api/team/invite', { email: 'ed@x.io', role: 'editor' })).status, 402);
   await owner('POST', '/api/me/plan', { plan: 'enterprise' });
   await ed('POST', '/api/auth/register', { email: 'ed@x.io', password: 'password1' });
-  assert.equal((await owner('POST', '/api/team/invite', { email: 'ed@x.io', role: 'editor' })).body.added, true);
+  // An unconfirmed account isn't added directly; the invite waits until the address is confirmed.
+  assert.equal((await owner('POST', '/api/team/invite', { email: 'ed@x.io', role: 'editor' })).body.invited, true);
+  assert.equal((await ed('GET', '/api/me')).body.workspaces.length, 1);
+  await confirmEmail(ed);
   assert.equal((await owner('POST', '/api/team/invite', { email: 'view@x.io', role: 'viewer' })).body.invited, true);
-  await viewer('POST', '/api/auth/register', { email: 'view@x.io', password: 'password1' }); // invite auto-accepted
+  await viewer('POST', '/api/auth/register', { email: 'view@x.io', password: 'password1' });
+  assert.equal((await viewer('GET', '/api/me')).body.workspaces.length, 1, 'invite not accepted before confirming');
+  await confirmEmail(viewer);
   const { id } = (await owner('POST', '/api/forms', { title: 'Team form' })).body;
 
   const me = (await ed('GET', '/api/me')).body;

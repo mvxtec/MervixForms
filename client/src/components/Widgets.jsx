@@ -4,6 +4,7 @@ import QRCode from 'qrcode';
 import { api } from '../api.js';
 import { WIDGET_BY_KEY, widgetKind, datasetOptions } from '@shared/widgets.js';
 import { PHONE_CODES } from '@shared/datasets.js';
+import { safeUrl } from '@shared/urls.js';
 
 const lines = (x) => (Array.isArray(x) ? x : String(x || '').split('\n')).map((s) => String(s).trim()).filter(Boolean);
 const Placeholder = ({ children }) => <div className="wg-empty">{children}</div>;
@@ -95,7 +96,7 @@ function ActionButton({ f }) {
   const digits = String(f.value || '').replace(/[^\d]/g, '');
   const msg = encodeURIComponent(f.message || '');
   const link = { whatsapp: `https://wa.me/${digits}${msg ? `?text=${msg}` : ''}`, call: `tel:${f.value}`, sms: `sms:${f.value}${msg ? `?body=${msg}` : ''}`, link: f.value }[f.network];
-  if (link) return <a className="btn wg-action" href={link} target={f.network === 'link' || f.network === 'whatsapp' ? '_blank' : undefined} rel="noreferrer">{f.text || f.label}</a>;
+  if (link && safeUrl(link)) return <a className="btn wg-action" href={safeUrl(link)} target={f.network === 'link' || f.network === 'whatsapp' ? '_blank' : undefined} rel="noreferrer">{f.text || f.label}</a>;
   const act = async () => {
     if (f.network === 'top') return window.scrollTo({ top: 0, behavior: 'smooth' });
     if (f.network === 'share') {

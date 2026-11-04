@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { api } from '../api.js';
 import Icon from './Icon.jsx';
+import { safeUrl } from '@shared/urls.js';
 
 const money = (currency, n) => `${currency} ${Number(n || 0).toFixed(2)}`;
 
@@ -77,7 +78,7 @@ export default function AppView({ appId, kind, def, forms = {}, live, branding }
                 case 'text': return <p key={e.id} style={{ textAlign: 'center', whiteSpace: 'pre-wrap' }}>{e.text}</p>;
                 case 'image': return e.src ? <img key={e.id} src={e.src} alt="" style={{ width: '100%', borderRadius: 8, margin: '8px 0' }} /> : null;
                 case 'link': case 'button':
-                  return <a key={e.id} href={e.url || '#'} target="_blank" rel="noreferrer" className="btn" style={{ ...btn, margin: '6px 0', display: 'flex', ...(e.type === 'link' ? { background: '#fff', color: t.primary, border: `1px solid ${t.primary}` } : {}) }}>{e.label || e.url}</a>;
+                  return <a key={e.id} href={safeUrl(e.url) || undefined} target="_blank" rel="noreferrer" className="btn" style={{ ...btn, margin: '6px 0', display: 'flex', ...(e.type === 'link' ? { background: '#fff', color: t.primary, border: `1px solid ${t.primary}` } : {}) }}>{e.label || e.url}</a>;
                 case 'form':
                   return (
                     <div key={e.id} className="card" style={{ margin: '8px 0', display: 'flex', alignItems: 'center', gap: 12 }} onClick={() => e.formId && setOpenForm(e.formId)}>

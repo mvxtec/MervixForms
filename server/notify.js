@@ -9,13 +9,13 @@ import { formEmails } from '../shared/emails.js';
 import { WEBHOOK_KEYS } from '../shared/integrations.js';
 import { startWorkflows } from './workflows.js';
 import { submissionPdf } from './pdf.js';
+import { hmac } from './secrets.js';
 
-const SECRET = process.env.SESSION_SECRET || 'dev-secret-change-me';
 export const BASE_URL = () => process.env.BASE_URL || `http://localhost:${process.env.PORT || 4000}`;
 export const emailEnabled = () => !!process.env.SMTP_HOST;
 
 export const approvalToken = (subId, email) =>
-  crypto.createHmac('sha256', SECRET).update(`approval:${subId}:${email}`).digest('base64url').slice(0, 32);
+  hmac('approval', `${subId}:${email}`);
 
 let transport = null;
 const mailer = () => {

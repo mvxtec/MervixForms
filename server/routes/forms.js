@@ -5,6 +5,7 @@ import { requireAuth, requireRole } from '../auth.js';
 import { planOf } from '../../shared/plans.js';
 import { TEMPLATES, blankForm, BASE_SETTINGS } from '../templates.js';
 import { sendTestEmail, testIntegration } from '../notify.js';
+import { findUnsafeUrl } from '../../shared/urls.js';
 
 const r = Router();
 r.use(['/forms', '/templates'], requireAuth, requireRole('editor'));
@@ -20,6 +21,8 @@ export function badDefinition(def) {
     ids.add(f.id);
   }
   if (def.settings !== undefined && (typeof def.settings !== 'object' || Array.isArray(def.settings))) return 'settings must be an object.';
+  const unsafe = findUnsafeUrl(def);
+  if (unsafe) return `the link in ${unsafe} must start with https://, http://, mailto: or tel:.`;
   return null;
 }
 

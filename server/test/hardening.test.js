@@ -7,6 +7,7 @@ import path from 'node:path';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'forms-hard-'));
 process.env.DATA_DIR = tmp;
+process.env.SUPER_ADMIN_EMAILS = 'h@x.co'; // the operator may change plans
 const { app } = await import('../index.js');
 
 let server, base, cookie = '';

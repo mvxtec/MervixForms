@@ -6,6 +6,7 @@ import { requireAuth, requireRole } from '../auth.js';
 import { planOf } from '../../shared/plans.js';
 import { deliver, BASE_URL } from '../notify.js';
 import { stripeEnabled, createCheckout, retrieveCheckout } from '../payments.js';
+import { findUnsafeUrl } from '../../shared/urls.js';
 
 const r = Router();
 const parse = (row) => row && { ...row, definition: JSON.parse(row.definition) };
@@ -47,6 +48,8 @@ r.put('/apps/:id', requireAuth, requireRole('editor'), (req, res) => {
   if (!a) return;
   const def = req.body?.definition;
   if (!def || !Array.isArray(def.elements)) return res.status(400).json({ error: 'Invalid app' });
+  const unsafe = findUnsafeUrl(def);
+  if (unsafe) return res.status(400).json({ error: `The link in ${unsafe} must start with https://, http://, mailto: or tel:.` });
   db.prepare("UPDATE apps SET definition = ?, title = ?, status = ?, updated_at = datetime('now') WHERE id = ?").run(JSON.stringify(def), String(def.title || a.title), req.body.status === 'disabled' ? 'disabled' : 'enabled', a.id);
   res.json({ ok: true });
 });

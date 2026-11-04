@@ -75,7 +75,9 @@ export async function switchTo(id) {
 
 function Tasks({ onCount }) {
   const [rows, setRows] = useState(null);
-  useEffect(() => { api('/tasks/assigned').then((r) => { setRows(r); onCount(r.length); }); }, []);
+  const [error, setError] = useState('');
+  useEffect(() => { api('/tasks/assigned').then((r) => { setRows(r); onCount(r.length); }).catch((e) => setError(e.message)); }, []);
+  if (error) return <div className="ws-empty"><span className="empty-icon"><Icon name="mail" size={22} /></span><b>Confirm your e-mail first</b><span className="hint">{error}</span></div>;
   if (!rows) return <p className="muted">Loading…</p>;
   if (!rows.length) return <div className="ws-empty"><Icon name="check" size={28} /><b>No tasks waiting for you</b><span className="hint">Approvals and tasks that workflows assign to you show up here.</span></div>;
   return (
@@ -165,7 +167,7 @@ export default function Home({ view = 'all', label = '' }) {
   };
   useEffect(load, [view, label, q, sort]);
   useEffect(() => { setPicked([]); setType(''); }, [view, label]);
-  useEffect(() => { api('/tasks/assigned').then((r) => setTaskCount(r.length)).catch(() => {}); }, []);
+  useEffect(() => { if (me.user.emailVerified) api('/tasks/assigned').then((r) => setTaskCount(r.length)).catch(() => {}); }, []);
 
   const act = async (fn) => { setError(''); try { await fn(); load(); me.refresh(); } catch (e) { setError(e.message); } };
   const star = (it) => act(() => (it.type === 'form'

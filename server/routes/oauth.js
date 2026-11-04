@@ -5,6 +5,7 @@ import crypto from 'node:crypto';
 import { db } from '../db.js';
 import { hashPassword, issueSession } from '../auth.js';
 import { BASE_URL } from '../notify.js';
+import { sendVerification } from './account.js';
 
 const r = Router();
 
@@ -52,16 +53,24 @@ r.get('/auth/oauth/:p/callback', async (req, res) => {
     const email = String(info.email || '').toLowerCase();
     if (!email || (name === 'google' && info.email_verified === false)) return fail(res, 'Your account has no verified e-mail address.');
     const key = `${name}:${info.sub}`;
-    let user = db.prepare('SELECT id, oauth FROM users WHERE oauth = ?').get(key) || db.prepare('SELECT id, oauth FROM users WHERE email = ?').get(email);
-    if (user && !user.oauth) {
-      // Only Google guarantees verified e-mails, so only Google links to an existing password account.
-      if (name !== 'google') return fail(res, 'An account with this e-mail already exists. Log in with your password.');
-      db.prepare('UPDATE users SET oauth = ? WHERE id = ?').run(key, user.id);
+    // Sign in only the account this provider identity created or was linked to. An e-mail match links
+    // an existing account only when Google vouches for the address and the account has no other sign-in.
+    const verified = name === 'google' && info.email_verified === true;
+    let user = db.prepare('SELECT id FROM users WHERE oauth = ?').get(key);
+    if (!user) {
+      const byEmail = db.prepare('SELECT id, oauth FROM users WHERE email = ?').get(email);
+      if (byEmail) {
+        if (!verified || byEmail.oauth) return fail(res, 'An account with this e-mail already exists. Log in with your password.');
+        db.prepare('UPDATE users SET oauth = ? WHERE id = ?').run(key, byEmail.id);
+        user = byEmail;
+      }
     }
     if (!user) {
       const { lastInsertRowid } = db.prepare('INSERT INTO users (email, name, password_hash, oauth) VALUES (?, ?, ?, ?)').run(email, String(info.name || ''), hashPassword(crypto.randomBytes(24).toString('hex')), key);
       user = { id: Number(lastInsertRowid) };
+      if (!verified) sendVerification({ id: user.id, email });
     }
+    if (verified) db.prepare("UPDATE users SET email_verified_at = COALESCE(email_verified_at, datetime('now')) WHERE id = ?").run(user.id);
     issueSession(res, user.id);
     res.append('Set-Cookie', `${STATE_COOKIE}=; Path=/api/auth/oauth; Max-Age=0`);
     res.redirect('/#/');

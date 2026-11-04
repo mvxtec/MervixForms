@@ -8,6 +8,7 @@ import { formatValue, isInput, isEmpty } from '../../shared/fields.js';
 import { notifyDecision } from '../notify.js';
 import { submissionPdf } from '../pdf.js';
 import { restartOnEdit } from '../workflows.js';
+import { sendUpload } from '../files.js';
 
 const r = Router();
 r.use(['/forms', '/submissions', '/files'], requireAuth, requireRole('editor'));
@@ -163,9 +164,7 @@ r.get('/files/:fid', (req, res) => {
   const up = db.prepare('SELECT * FROM uploads WHERE id = ? AND user_id = ?').get(req.params.fid, req.ws.id);
   const file = up && path.join(UPLOAD_DIR, path.basename(up.id));
   if (!up || !fs.existsSync(file)) return res.status(404).json({ error: 'File not found' });
-  res.setHeader('Content-Type', up.mime || 'application/octet-stream');
-  res.setHeader('Content-Disposition', `${req.query.download ? 'attachment' : 'inline'}; filename="${up.name.replace(/"/g, '')}"`);
-  fs.createReadStream(file).pipe(res);
+  sendUpload(res, file, up.name, { download: !!req.query.download });
 });
 
 export default r;

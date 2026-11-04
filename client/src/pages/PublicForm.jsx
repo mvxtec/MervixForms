@@ -3,6 +3,7 @@ import { api } from '../api.js';
 import { applyTranslation } from '@shared/i18n.js';
 import FormRenderer, { themeStyle } from '../components/FormRenderer.jsx';
 import ChatAgent from '../components/ChatAgent.jsx';
+import { safeRedirect } from '@shared/urls.js';
 
 export default function PublicForm({ formId, embed }) {
   const params = new URLSearchParams(window.location.search);
@@ -81,7 +82,7 @@ export default function PublicForm({ formId, embed }) {
               <div className="wf-thanks"><div className="wf-check" aria-hidden="true">✓</div><div style={{ whiteSpace: 'pre-wrap' }}>{chatDone.thankYou}</div></div>
             ) : (
               <ChatAgent def={def} formId={formId} password={password}
-                onDone={(res) => (res.redirect ? (window.top.location.href = res.redirect) : setChatDone(res))}
+                onDone={(res) => (safeRedirect(res.redirect) ? (window.top.location.href = safeRedirect(res.redirect)) : setChatDone(res))}
                 onSwitchToForm={(answers) => { setPrefill(answers); setMode('form'); }} />
             )}
           </div>
