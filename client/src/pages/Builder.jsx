@@ -210,6 +210,8 @@ function logicTag(def, id) {
 
 export default function Builder({ def, update, plan }) {
   const [selected, setSelected] = useState(null);
+  // Phones: the canvas fills the screen; the element palette and field settings open as bottom sheets.
+  const [sheet, setSheet] = useState('');
   const [dropAt, setDropAt] = useState(null);
   const searchRef = useRef(null);
   const fields = def.fields;
@@ -264,8 +266,8 @@ export default function Builder({ def, update, plan }) {
   };
 
   return (
-    <div className="builder">
-      <Palette ref={searchRef} def={def} update={update} onAddType={(t) => insert(t)} onAddWidget={(k) => insertWidget(k)} />
+    <div className={`builder ${sheet ? `sheet-${sheet}` : ''}`} onKeyDown={(e) => { if (e.key === 'Escape' && sheet) setSheet(''); }}>
+      <Palette ref={searchRef} def={def} update={update} onAddType={(t) => { insert(t); setSheet(''); }} onAddWidget={(k) => { insertWidget(k); setSheet(''); }} />
 
       <div className="canvas" onDragOver={(e) => { e.preventDefault(); if (e.target === e.currentTarget) setDropAt(fields.length); }} onDrop={onDrop} onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setDropAt(null); }} onClick={(e) => { if (e.target === e.currentTarget) setSelected(null); }}>
         <div className="canvas-bar" style={themeStyle(def.theme)}>
@@ -331,7 +333,14 @@ export default function Builder({ def, update, plan }) {
         </div>
       </div>
 
+      <div className="builder-fab" role="toolbar" aria-label="Builder actions">
+        <button className="primary" aria-expanded={sheet === 'add'} onClick={() => setSheet(sheet === 'add' ? '' : 'add')}><Icon name="plus" size={16} />Add element</button>
+        <button aria-expanded={sheet === 'props'} onClick={() => setSheet(sheet === 'props' ? '' : 'props')}><Icon name="settings" size={16} />{sel ? 'Field settings' : 'Form design'}</button>
+      </div>
+      {sheet && <div className="sheet-backdrop" onClick={() => setSheet('')} aria-hidden="true" />}
+
       <aside className="props" aria-label={sel ? 'Field properties' : 'Form design'}>
+        <button className="sheet-close small" onClick={() => setSheet('')}>Done</button>
         {sel ? (
           <>
             <button className="small ghost" onClick={() => setSelected(null)} style={{ marginBottom: 12, paddingLeft: 0 }}><Icon name="back" size={14} />Form design</button>

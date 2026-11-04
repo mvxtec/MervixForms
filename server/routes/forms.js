@@ -21,6 +21,8 @@ export function badDefinition(def) {
     ids.add(f.id);
   }
   if (def.settings !== undefined && (typeof def.settings !== 'object' || Array.isArray(def.settings))) return 'settings must be an object.';
+  const currencies = new Set((def.fields || []).filter((f) => ['products', 'donation', 'subscription'].includes(f.type)).map((f) => f.currency || 'USD'));
+  if (currencies.size > 1) return `payment fields use different currencies (${[...currencies].join(', ')}); use one currency for the whole form.`;
   const unsafe = findUnsafeUrl(def);
   if (unsafe) return `the link in ${unsafe} must start with https://, http://, mailto: or tel:.`;
   return null;
@@ -41,6 +43,13 @@ function checkFormQuota(req, res) {
     return false;
   }
   return true;
+}
+
+function checkFieldLimit(req, res, def) {
+  const plan = planOf(req.ws.plan);
+  if ((def.fields || []).length <= plan.fieldsPerForm) return true;
+  res.status(402).json({ error: `Your ${plan.name} plan allows ${plan.fieldsPerForm} fields per form.`, upgrade: true });
+  return false;
 }
 
 function insertForm(userId, def, folder = '') {
@@ -88,6 +97,7 @@ r.post('/forms', (req, res) => {
     def = structuredClone(t.definition);
   } else def = blankForm(title || 'Untitled Form');
   if (title) def.title = title;
+  if (!checkFieldLimit(req, res, def)) return;
   res.json({ id: insertForm(req.ws.id, def, folder || '') });
 });
 
@@ -178,6 +188,7 @@ r.post('/forms/:id/clone', (req, res) => {
   if (!f || !checkFormQuota(req, res)) return;
   const def = structuredClone(f.definition);
   def.title = `Clone of ${f.title}`;
+  if (!checkFieldLimit(req, res, def)) return;
   res.json({ id: insertForm(req.ws.id, def, f.folder) });
 });
 

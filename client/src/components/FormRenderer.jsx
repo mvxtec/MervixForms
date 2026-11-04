@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { computeState, buildPages, validateField } from '@shared/logic.js';
 import { isDisplay, isInput, formatValue } from '@shared/fields.js';
 import { sanitizeHtml, escapeHtml, looksLikeHtml } from '../sanitize.js';
@@ -73,9 +73,15 @@ function initialValues(def, initial) {
  * Renders a form definition with logic, pagination, validation and submission.
  * mode: 'live' (published form) | 'preview' (builder preview, submissions are not sent)
  */
+const SINGLE_INPUT = new Set(['text', 'textarea', 'email', 'phone', 'url', 'number', 'date', 'time', 'dropdown']);
+
 export default function FormRenderer({ def, formId, mode = 'live', branding, initial, draftToken: initialDraft, password }) {
   const [raw, setRaw] = useState(() => initialValues(def, initial || {}));
   const [errors, setErrors] = useState({});
+  // After a failed attempt, focus moves to a summary of the problems (keyboard and screen-reader users).
+  const [errorTick, setErrorTick] = useState(0);
+  const summaryRef = useRef(null);
+  useEffect(() => { if (errorTick) summaryRef.current?.focus(); }, [errorTick]);
   const [page, setPage] = useState(0);
   const [history, setHistory] = useState([]);
   const [done, setDone] = useState(null);
@@ -104,6 +110,7 @@ export default function FormRenderer({ def, formId, mode = 'live', branding, ini
       if (e) errs[f.id] = e;
     }
     setErrors(errs);
+    if (Object.keys(errs).length) setErrorTick((t) => t + 1);
     const open = Object.keys(errs).map((id) => sections[id]).filter(Boolean);
     if (open.length) setCollapsed((c) => new Set([...c].filter((id) => !open.includes(id))));
     return !Object.keys(errs).length;
@@ -143,6 +150,7 @@ export default function FormRenderer({ def, formId, mode = 'live', branding, ini
       setFormError(e.message);
       if (e.body?.errors) {
         setErrors(e.body.errors);
+        setErrorTick((t) => t + 1);
         const first = allPages.findIndex((pg) => pg.some((f) => e.body.errors[f.id]));
         if (first >= 0) setPage(first);
       }
@@ -187,6 +195,16 @@ export default function FormRenderer({ def, formId, mode = 'live', branding, ini
         ) : (
           <form onSubmit={(e) => { e.preventDefault(); next(); }} noValidate>
             {settings.showProgress !== false && allPages.length > 1 && <div className="wf-progress"><div style={{ width: `${progress}%` }} /></div>}
+            {Object.keys(errors).length > 0 && (
+              <div className="wf-error-summary" role="alert" tabIndex={-1} ref={summaryRef}>
+                <b>{Object.keys(errors).length === 1 ? 'There is a problem' : `There are ${Object.keys(errors).length} problems`}</b>
+                <ul>
+                  {def.fields.filter((f) => errors[f.id]).map((f) => (
+                    <li key={f.id}><a href={`#field-${f.id}`} onClick={(e) => { e.preventDefault(); const el = document.getElementById(`field-${f.id}`); el?.scrollIntoView({ block: 'center' }); el?.querySelector('input, select, textarea, button')?.focus(); }}>{f.label}: {errors[f.id]}</a></li>
+                  ))}
+                </ul>
+              </div>
+            )}
             {visibleOn(page).filter((f) => !collapsed.has(sections[f.id])).map((f) => (
               <div key={f.id} className={`wf-field ${errors[f.id] ? 'has-err' : ''}`} id={`field-${f.id}`}>
                 {f.type === 'section' ? (
@@ -196,12 +214,25 @@ export default function FormRenderer({ def, formId, mode = 'live', branding, ini
                   </button>
                 ) : isDisplay(f) ? <DisplayBlock f={f} /> : f.type === 'hidden' ? null : (
                   <>
-                    {f.type !== 'terms' && <label className="wf-label">{f.label}{state.required.has(f.id) && <span className="wf-req">*</span>}</label>}
-                    <fieldset disabled={state.disabled?.has(f.id)} className="wf-fieldset">
-                      <FieldInput f={withRuleEffects(f, state)} value={raw[f.id]} computed={state.values[f.id]} onChange={(v) => set(f.id, v)} formId={formId} mode={mode} />
-                    </fieldset>
-                    {f.description && <div className="wf-desc">{f.description}</div>}
-                    {errors[f.id] && <div className="wf-err">{errors[f.id]}</div>}
+                    {(() => {
+                      // Single inputs get a real <label for>; grouped fields (name, choices, products…) are named by their fieldset.
+                      const single = SINGLE_INPUT.has(f.type);
+                      const ids = { input: `f-${f.id}`, label: `l-${f.id}`, desc: `d-${f.id}`, err: `e-${f.id}` };
+                      const describedBy = [f.description && ids.desc, errors[f.id] && ids.err].filter(Boolean).join(' ') || undefined;
+                      const required = state.required.has(f.id);
+                      const ax = { id: ids.input, 'aria-describedby': describedBy, 'aria-invalid': errors[f.id] ? true : undefined, 'aria-required': required || undefined };
+                      const Label = single ? 'label' : 'div';
+                      return (
+                        <>
+                          {f.type !== 'terms' && <Label className="wf-label" id={ids.label} htmlFor={single ? ids.input : undefined}>{f.label}{required && <span className="wf-req" aria-hidden="true">*</span>}{required && <span className="sr-only"> (required)</span>}</Label>}
+                          <fieldset disabled={state.disabled?.has(f.id)} className="wf-fieldset" aria-labelledby={single || f.type === 'terms' ? undefined : ids.label} aria-describedby={single ? undefined : describedBy}>
+                            <FieldInput f={withRuleEffects(f, state)} value={raw[f.id]} computed={state.values[f.id]} onChange={(v) => set(f.id, v)} formId={formId} mode={mode} ax={single ? ax : undefined} />
+                          </fieldset>
+                          {f.description && <div className="wf-desc" id={ids.desc}>{f.description}</div>}
+                          {errors[f.id] && <div className="wf-err" id={ids.err}>{errors[f.id]}</div>}
+                        </>
+                      );
+                    })()}
                   </>
                 )}
               </div>

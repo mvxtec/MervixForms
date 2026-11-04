@@ -25,6 +25,11 @@ const { default: oauth } = await import('./routes/oauth.js');
 const { default: workspace } = await import('./routes/workspace.js');
 const { startScheduler } = await import('./workflows.js');
 startScheduler();
+const { sweep } = await import('./files.js');
+const { db: database, UPLOAD_DIR } = await import('./db.js');
+const runSweep = () => { try { sweep(database, UPLOAD_DIR); } catch (e) { console.error('sweep', e); } };
+runSweep();
+setInterval(runSweep, 60 * 60 * 1000).unref();
 
 // Express 4 ignores rejected promises from async handlers, which leaves the request hanging.
 // Route them to the error handler instead (what express-async-errors does).
@@ -43,6 +48,27 @@ process.on('unhandledRejection', (e) => console.error('unhandledRejection', e));
 
 export const app = express();
 app.set('trust proxy', 'loopback');
+app.disable('x-powered-by');
+
+// Security headers. Public forms, embeds and apps may be framed by any site (that's how embedding works);
+// the rest of the app may only be framed by itself.
+const EMBEDDABLE = /^\/(f|embed|a)\//;
+const CSP = [
+  "default-src 'self'", "script-src 'self'", "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src 'self' https://fonts.gstatic.com data:", "img-src 'self' data: blob: https:", "media-src 'self' blob: https:",
+  "connect-src 'self'", "frame-src 'self' https:", "worker-src 'self' blob:", "object-src 'none'", "base-uri 'self'", "form-action 'self'",
+].join('; ');
+app.use((req, res, next) => {
+  const embeddable = EMBEDDABLE.test(req.path);
+  res.setHeader('Content-Security-Policy', `${CSP}; frame-ancestors ${embeddable ? '*' : "'self'"}`);
+  if (!embeddable) res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(self), microphone=(self), geolocation=(self), payment=(self)');
+  if (/^https:/i.test(process.env.BASE_URL || '')) res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  next();
+});
+
 app.use(express.json({ limit: '15mb' }));
 
 app.use('/api/public', publicRoutes);

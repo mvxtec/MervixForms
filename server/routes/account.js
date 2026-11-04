@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import crypto from 'node:crypto';
 import { db, getUsage } from '../db.js';
-import { hashPassword, verifyPassword, issueSession, clearSession, requireAuth, requireRole, workspacesOf, setWorkspaceCookie } from '../auth.js';
+import { hashPassword, verifyPassword, issueSession, clearSession, endSessions, requireAuth, requireRole, workspacesOf, setWorkspaceCookie } from '../auth.js';
 import { deliver, BASE_URL, emailEnabled } from '../notify.js';
 import { PLANS, planOf, serializePlan } from '../../shared/plans.js';
 import { stripeEnabled } from '../payments.js';
@@ -75,13 +75,42 @@ r.post('/auth/verify', verifyLimit, (req, res) => {
   res.json({ ok: true, email: u.email });
 });
 
+// Password reset. The link is signed over the current password hash, so it works once and stops working
+// as soon as the password changes. The response is the same whether or not the address has an account.
+const RESET_MS = 60 * 60 * 1000;
+const resetSig = (u, exp) => hmac('reset', `${u.id}.${u.password_hash}.${exp}`);
+const forgotLimit = limit({ name: 'forgot', max: 5, windowMs: 15 * 60 * 1000, message: 'Too many reset requests. Please wait 15 minutes.' });
+r.post('/auth/forgot', forgotLimit, (req, res) => {
+  const u = db.prepare('SELECT id, email, password_hash FROM users WHERE email = ?').get(String(req.body?.email || '').trim().toLowerCase());
+  if (u) {
+    const exp = Date.now() + RESET_MS;
+    const url = `${BASE_URL()}/#/reset/${u.id}.${exp}.${resetSig(u, exp)}`;
+    deliver(u.id, null, u.email, 'Reset your password',
+      `Someone asked to reset the password for ${u.email}. To choose a new password, open:\n\n${url}\n\nThe link works for 1 hour and only once. If it wasn't you, ignore this e-mail; your password stays the same.`);
+  }
+  res.json({ ok: true });
+});
+r.post('/auth/reset', forgotLimit, (req, res) => {
+  const [id, exp, sig] = String(req.body?.token || '').split('.');
+  const u = /^\d+$/.test(id || '') && db.prepare('SELECT id, email, password_hash FROM users WHERE id = ?').get(Number(id));
+  if (!u || !sameSig(sig, resetSig(u, exp))) return res.status(400).json({ error: 'This reset link is not valid or was already used. Request a new one.' });
+  if (Number(exp) < Date.now()) return res.status(410).json({ error: 'This reset link has expired. Request a new one.' });
+  const { password } = req.body || {};
+  if (typeof password !== 'string' || password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters.' });
+  // Opening the e-mailed link also proves the person owns the address.
+  db.prepare("UPDATE users SET password_hash = ?, email_verified_at = COALESCE(email_verified_at, datetime('now')) WHERE id = ?").run(hashPassword(password), u.id);
+  endSessions(u.id);
+  clearLoginFailures(u.email);
+  res.json({ ok: true });
+});
+
 const resendLimit = limit({ name: 'verify-resend', max: 5, windowMs: 60 * 60 * 1000, key: (req) => req.user.id, message: 'You can request 5 confirmation e-mails an hour.' });
 r.post('/auth/verify/resend', requireAuth, resendLimit, (req, res) => {
   if (!req.user.email_verified_at) sendVerification(req.user);
   res.json({ ok: true, alreadyVerified: !!req.user.email_verified_at });
 });
 
-r.post('/auth/logout', (req, res) => { clearSession(res); res.json({ ok: true }); });
+r.post('/auth/logout', (req, res) => { clearSession(req, res); res.json({ ok: true }); });
 
 r.get('/me', requireAuth, (req, res) => {
   res.json({
@@ -161,6 +190,7 @@ r.patch('/me', requireAuth, (req, res) => {
     if (!verifyPassword(String(currentPassword || ''), u.password_hash)) return res.status(400).json({ error: 'Current password is incorrect.' });
     if (typeof password !== 'string' || password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters.' });
     db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hashPassword(password), req.user.id);
+    endSessions(req.user.id, req.sessionId); // other devices must sign in with the new password
   }
   res.json({ ok: true });
 });
@@ -176,7 +206,7 @@ r.post('/me/plan', requireAuth, (req, res) => {
 
 r.delete('/me', requireAuth, (req, res) => {
   db.prepare('DELETE FROM users WHERE id = ?').run(req.user.id);
-  clearSession(res);
+  clearSession(req, res);
   res.json({ ok: true });
 });
 

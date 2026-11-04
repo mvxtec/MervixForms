@@ -15,6 +15,7 @@ import { TEMPLATES } from '../templates.js';
 import { hmac } from '../secrets.js';
 import { sniffType, fixUploadName } from '../files.js';
 import { safeRedirect } from '../../shared/urls.js';
+import { limit } from '../ratelimit.js';
 
 const r = Router();
 
@@ -47,6 +48,29 @@ const isUploadField = (f) => f.type === 'file' || (f.type === 'widget' && widget
 
 const rosterMatch = (f, id, pin) => (f.roster || []).find((r) => String(r.id).trim().toLowerCase() === String(id || '').trim().toLowerCase()
   && (f.mode === 'Employee ID only' || String(r.pin || '') === String(pin || '')));
+
+// Form passwords: compared in constant time; 10 wrong guesses from one network lock that form for 15 minutes.
+const sha = (v) => crypto.createHash('sha256').update(String(v)).digest();
+export function checkFormPassword(req, form, given) {
+  const pw = form.definition.settings?.password;
+  if (!pw) return 'ok';
+  const key = `pw:${form.id}:${req.ip}`;
+  if (attemptsLeft(key, 10) <= 0) return 'locked';
+  if (given && crypto.timingSafeEqual(sha(given), sha(pw))) return 'ok';
+  if (given) recordFailure(key);
+  return 'wrong';
+}
+export function passwordRefused(res, check) {
+  if (check === 'locked') return res.status(429).json({ error: 'Too many wrong passwords. Try again in 15 minutes.' });
+  return res.status(403).json({ error: 'Password required' });
+}
+
+// Abuse limits for anonymous endpoints (per network, and per form where it matters).
+const perFormIp = (req) => `${req.params.id}:${req.ip}`;
+const submitLimit = limit({ name: 'submit', max: 20, windowMs: 60 * 1000, key: perFormIp, message: 'Too many submissions from your network. Please wait a minute.' });
+const uploadLimit = limit({ name: 'upload', max: 30, windowMs: 10 * 60 * 1000, message: 'Too many uploads. Please wait a few minutes.' });
+const draftLimit = limit({ name: 'draft', max: 30, windowMs: 10 * 60 * 1000, message: 'Too many saves. Please wait a few minutes.' });
+const MAX_DRAFT_BYTES = 256 * 1024;
 
 // Failed ID & PIN attempts per form, field and IP; locks out for 15 minutes after the field's limit.
 const attempts = new Map();
@@ -91,10 +115,10 @@ r.get('/forms/:id', (req, res) => {
   if (!form || form.status === 'trashed') return res.status(404).json({ error: 'Form not found' });
   const owner = ownerOf(form);
   const closed = closedReason(form, owner);
-  const pw = form.definition.settings?.password;
-  if (pw && req.query.password !== pw) {
-    return res.json({ id: form.id, title: form.title, passwordRequired: true, wrongPassword: !!req.query.password });
-  }
+  const given = req.get('x-form-password') || '';
+  const pwCheck = checkFormPassword(req, form, given);
+  if (pwCheck === 'locked') return passwordRefused(res, pwCheck);
+  if (pwCheck === 'wrong') return res.json({ id: form.id, title: form.title, passwordRequired: true, wrongPassword: !!given });
   if (!closed && req.query.preview !== '1') {
     db.prepare('UPDATE forms SET views = views + 1 WHERE id = ?').run(form.id);
     bumpUsage(owner.id, 'views');
@@ -113,7 +137,7 @@ const upload = multer({
   limits: { fileSize: 100 * 1024 * 1024 },
 });
 
-r.post('/forms/:id/upload', upload.single('file'), (req, res) => {
+r.post('/forms/:id/upload', uploadLimit, upload.single('file'), (req, res) => {
   const form = loadForm(req.params.id);
   const file = req.file;
   const drop = () => file && fs.rmSync(file.path, { force: true });
@@ -129,7 +153,7 @@ r.post('/forms/:id/upload', upload.single('file'), (req, res) => {
     if (!ok) { drop(); return res.status(415).json({ error: `Allowed types: ${field.accept}` }); }
   }
   if (getUsage(owner.id).uploadBytes + file.size > planOf(owner.plan).uploadBytes) { drop(); return res.status(402).json({ error: 'The form owner has run out of upload space.' }); }
-  db.prepare('INSERT INTO uploads (id, user_id, form_id, name, mime, size) VALUES (?, ?, ?, ?, ?, ?)').run(file.filename, owner.id, form.id, name, mime, file.size);
+  db.prepare('INSERT INTO uploads (id, user_id, form_id, name, mime, size, pending) VALUES (?, ?, ?, ?, ?, ?, 1)').run(file.filename, owner.id, form.id, name, mime, file.size);
   res.json({ id: file.filename, name, size: file.size, mime });
 });
 
@@ -158,17 +182,22 @@ r.post('/forms/:id/verify-id', (req, res) => {
   res.json({ ok: true, name: hit.name || '' });
 });
 
-r.post('/forms/:id/draft', (req, res) => {
+r.post('/forms/:id/draft', draftLimit, (req, res) => {
   const form = loadForm(req.params.id);
   if (!form || form.status === 'trashed') return res.status(404).json({ error: 'Form not found' });
   if (!form.definition.settings?.saveAndContinue) return res.status(400).json({ error: 'Drafts are disabled' });
   const closed = closedReason(form, ownerOf(form));
   if (closed) return res.status(403).json({ error: closed });
-  if (form.definition.settings.password && req.body?.password !== form.definition.settings.password) return res.status(403).json({ error: 'Password required' });
+  const pwCheck = checkFormPassword(req, form, req.body?.password);
+  if (pwCheck !== 'ok') return passwordRefused(res, pwCheck);
   if (req.body?.values && (typeof req.body.values !== 'object' || Array.isArray(req.body.values))) return res.status(400).json({ error: 'Invalid draft' });
-  const token = /^[a-f0-9]{24}$/.test(req.body?.token || '') ? req.body.token : crypto.randomBytes(12).toString('hex');
+  const json = JSON.stringify(req.body?.values || {});
+  if (json.length > MAX_DRAFT_BYTES) return res.status(413).json({ error: 'This draft is too large to save.' });
+  let token = /^[a-f0-9]{24}$/.test(req.body?.token || '') ? req.body.token : crypto.randomBytes(12).toString('hex');
+  const existing = db.prepare('SELECT form_id FROM drafts WHERE token = ?').get(token);
+  if (existing && existing.form_id !== form.id) token = crypto.randomBytes(12).toString('hex'); // never overwrite another form's draft
   db.prepare(`INSERT INTO drafts (token, form_id, data) VALUES (?, ?, ?)
-              ON CONFLICT(token) DO UPDATE SET data = excluded.data, updated_at = datetime('now')`).run(token, form.id, JSON.stringify(req.body?.values || {}));
+              ON CONFLICT(token) DO UPDATE SET data = excluded.data, updated_at = datetime('now')`).run(token, form.id, json);
   res.json({ token, url: `${BASE_URL()}/f/${form.id}?draft=${token}` });
 });
 
@@ -178,7 +207,7 @@ r.get('/drafts/:token', (req, res) => {
   res.json({ formId: d.form_id, values: JSON.parse(d.data) });
 });
 
-r.post('/forms/:id/submit', async (req, res) => {
+r.post('/forms/:id/submit', submitLimit, async (req, res) => {
   const form = loadForm(req.params.id);
   if (!form || form.status === 'trashed') return res.status(404).json({ error: 'Form not found' });
   const owner = ownerOf(form);
@@ -186,7 +215,8 @@ r.post('/forms/:id/submit', async (req, res) => {
   const settings = form.definition.settings || {};
   const closed = closedReason(form, owner);
   if (closed) return res.status(403).json({ error: closed });
-  if (settings.password && req.body?.password !== settings.password) return res.status(403).json({ error: 'Password required' });
+  const pwCheck = checkFormPassword(req, form, req.body?.password);
+  if (pwCheck !== 'ok') return passwordRefused(res, pwCheck);
   if (settings.oneSubmissionPerUser && db.prepare('SELECT 1 FROM submissions WHERE form_id = ? AND ip = ?').get(form.id, req.ip)) {
     return res.status(409).json({ error: 'You have already submitted this form.' });
   }
@@ -215,8 +245,10 @@ r.post('/forms/:id/submit', async (req, res) => {
   for (const f of fields.filter((x) => x.type === 'widget' && widgetKind(x) === 'idpin')) {
     const v = data[f.id];
     if (!v?.id) continue;
+    const key = `${form.id}:${f.id}:${req.ip}`;
+    if (attemptsLeft(key, Number(f.maxAttempts) || 5) <= 0) return res.status(429).json({ error: 'Too many failed attempts. Try again in 15 minutes.' });
     const hit = rosterMatch(f, v.id, v.pin);
-    if (!hit) return res.status(422).json({ error: 'Please fix the highlighted fields.', errors: { [f.id]: 'ID or PIN not recognised.' } });
+    if (!hit) { recordFailure(key); return res.status(422).json({ error: 'Please fix the highlighted fields.', errors: { [f.id]: 'ID or PIN not recognised.' } }); }
     data[f.id] = { id: String(v.id).trim(), name: hit.name || '', verified: true };
   }
 
@@ -253,8 +285,9 @@ r.post('/forms/:id/submit', async (req, res) => {
     if (!v.items.length) continue;
     // Products hidden by "Update Product List" conditions can't be bought.
     const catalog = Object.fromEntries((f.products || []).filter((p) => !state.hiddenProducts?.[f.id]?.has(p.id)).map((p) => [p.id, p]));
-    v.items = v.items.filter((i) => catalog[i.id]).map((i) => ({ id: i.id, name: catalog[i.id].name, price: Number(catalog[i.id].price), qty: Math.max(1, Math.floor(Number(i.qty) || 1)) }));
+    v.items = v.items.filter((i) => catalog[i.id]).map((i) => ({ id: i.id, name: catalog[i.id].name, price: Number(catalog[i.id].price), qty: Math.min(9999, Math.max(1, Math.floor(Number(i.qty) || 1))) }));
     v.total = productTotal(f, v);
+    if (!Number.isFinite(v.total) || v.total < 0) return res.status(422).json({ error: 'Please check the quantities.', errors: { [f.id]: 'Quantities are not valid.' } });
     v.currency = f.currency;
     payItems.push(...v.items);
     payment = { status: 'pending', amount: (payment?.amount || 0) + v.total, currency: f.currency, provider: gateway };
@@ -273,6 +306,8 @@ r.post('/forms/:id/submit', async (req, res) => {
     payItems.push({ id: plan.id, name: `${f.label}: ${plan.name}`, price: Number(plan.price), qty: 1, interval: plan.interval });
     payment = { status: 'pending', amount: (payment?.amount || 0) + Number(plan.price), currency: f.currency, provider: gateway, recurring: plan.interval };
   }
+  const currencies = new Set(fields.filter((f) => ['products', 'donation', 'subscription'].includes(f.type) && data[f.id]).map((f) => f.currency || ''));
+  if (currencies.size > 1) return res.status(422).json({ error: 'This form charges in more than one currency. The form owner needs to use one currency for all payment fields.' });
   if (payment && payment.amount > 0) {
     if (getUsage(owner.id).paymentsPerMonth >= plan.paymentsPerMonth) return res.status(402).json({ error: 'This form has reached its payment submission limit.' });
   } else payment = null;
@@ -286,6 +321,7 @@ r.post('/forms/:id/submit', async (req, res) => {
     form.id, JSON.stringify(data), settings.approvals?.enabled ? 'pending' : null, payment ? JSON.stringify(payment) : null, signed ? 1 : 0, req.ip,
   );
   const sub = parseSub(db.prepare('SELECT * FROM submissions WHERE id = ?').get(lastInsertRowid));
+  for (const f of fields.filter(isUploadField)) for (const file of data[f.id] || []) db.prepare('UPDATE uploads SET pending = 0 WHERE id = ? AND form_id = ?').run(file.id, form.id);
   bumpUsage(owner.id, 'submissions');
   if (payment) bumpUsage(owner.id, 'payments');
   if (signed) bumpUsage(owner.id, 'signatures');

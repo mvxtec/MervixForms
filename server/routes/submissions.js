@@ -46,7 +46,8 @@ r.get('/forms/:id/submissions.csv', (req, res) => {
   const form = ownForm(req, res);
   if (!form) return;
   const fields = form.definition.fields.filter(isInput);
-  const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  // A leading = + - @ (or tab/CR) would make Excel or Sheets run the answer as a formula.
+  const esc = (v) => `"${String(v ?? '').replace(/^[=+\-@\t\r]/, (c) => `'${c}`).replace(/"/g, '""')}"`;
   const head = ['Submission ID', 'Submitted At', ...fields.map((f) => f.label), 'Payment', 'Approval'];
   const lines = filtered(form, req.query).map((s) => [
     s.id, s.created_at, ...fields.map((f) => formatValue(f, s.data[f.id])),

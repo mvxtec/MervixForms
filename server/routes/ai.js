@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { db, parseForm } from '../db.js';
 import { requireAuth, requireRole } from '../auth.js';
 import { generateForm, translateForm, generateConditions, agentTurn, chatFields, AiUnavailable } from '../ai.js';
+import { checkFormPassword, passwordRefused } from './public.js';
 
 const r = Router();
 
@@ -36,7 +37,8 @@ r.post('/public/forms/:id/agent', async (req, res) => {
   if (!form || form.status !== 'enabled') return res.status(404).json({ error: 'Form not found' });
   const s = form.definition.settings || {};
   if (!s.agent?.enabled) return res.status(403).json({ error: 'The AI assistant is not enabled for this form.' });
-  if (s.password && req.body?.password !== s.password) return res.status(403).json({ error: 'Password required' });
+  const pwCheck = checkFormPassword(req, form, req.body?.password);
+  if (pwCheck !== 'ok') return passwordRefused(res, pwCheck);
   const history = Array.isArray(req.body?.history) ? req.body.history : [];
   if (history.length > 80) return res.status(400).json({ error: 'Conversation too long. Please use the regular form.' });
   try {

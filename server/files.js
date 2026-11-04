@@ -39,3 +39,15 @@ export function sendUpload(res, filePath, name, { download = false } = {}) {
   res.setHeader('Cache-Control', 'private, no-store');
   fs.createReadStream(filePath).pipe(res);
 }
+
+// Hourly clean-up: uploads never attached to a submission (24 h), abandoned drafts (30 days), expired sessions.
+export function sweep(db, uploadDir) {
+  const orphans = db.prepare("SELECT id FROM uploads WHERE pending = 1 AND created_at < datetime('now', '-1 day')").all();
+  for (const { id } of orphans) {
+    fs.rmSync(`${uploadDir}/${id.replace(/[^\w]/g, '')}`, { force: true });
+    db.prepare('DELETE FROM uploads WHERE id = ?').run(id);
+  }
+  db.prepare("DELETE FROM drafts WHERE updated_at < datetime('now', '-30 days')").run();
+  db.prepare('DELETE FROM sessions WHERE expires_at < ?').run(Date.now());
+  return orphans.length;
+}

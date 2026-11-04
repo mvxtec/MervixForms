@@ -88,7 +88,7 @@ function Products({ f, value, onChange }) {
         const s = sel(p.id);
         return (
           <div className="prod" key={p.id}>
-            <input type={f.singleChoice ? 'radio' : 'checkbox'} name={f.id} checked={!!s}
+            <input type={f.singleChoice ? 'radio' : 'checkbox'} name={f.id} aria-label={p.name} checked={!!s}
               onChange={(e) => set(f.singleChoice ? [{ id: p.id, name: p.name, qty: 1 }] : e.target.checked ? [...items, { id: p.id, name: p.name, qty: 1 }] : items.filter((i) => i.id !== p.id))} />
             <div className="grow">
               <div><b>{p.name}</b></div>
@@ -96,7 +96,7 @@ function Products({ f, value, onChange }) {
             </div>
             <div style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{money(p.price, f.currency)}</div>
             {f.quantity && (
-              <input type="number" min="1" style={{ width: 70 }} value={s?.qty || 1} disabled={!s}
+              <input type="number" min="1" max="9999" style={{ width: 70 }} aria-label={`Quantity of ${p.name}`} value={s?.qty || 1} disabled={!s}
                 onChange={(e) => set(items.map((i) => (i.id === p.id ? { ...i, qty: Math.max(1, Number(e.target.value) || 1) } : i)))} />
             )}
           </div>
@@ -240,44 +240,44 @@ function Subscription({ f, value, onChange }) {
   );
 }
 
-export function FieldInput({ f, value, onChange, formId, mode, computed }) {
+export function FieldInput({ f, value, onChange, formId, mode, computed, ax = {} }) {
   const v = value ?? '';
   const obj = value || {};
   const sub = (k) => (e) => onChange({ ...obj, [k]: e.target.value });
   switch (f.type) {
-    case 'text': return <input value={v} placeholder={f.placeholder} maxLength={f.maxLength || undefined} onChange={(e) => onChange(e.target.value)} />;
-    case 'textarea': return <textarea rows={f.rows || 4} value={v} placeholder={f.placeholder} maxLength={f.maxLength || undefined} onChange={(e) => onChange(e.target.value)} />;
-    case 'email': return <input type="email" value={v} placeholder={f.placeholder} onChange={(e) => onChange(e.target.value)} />;
-    case 'phone': return <input type="tel" value={v} placeholder={f.placeholder} onChange={(e) => onChange(e.target.value)} />;
-    case 'url': return <input type="url" value={v} placeholder={f.placeholder} onChange={(e) => onChange(e.target.value)} />;
-    case 'number': return <input type="number" value={v} min={f.min} max={f.max} step={f.step || 'any'} placeholder={f.placeholder} onChange={(e) => onChange(e.target.value)} style={{ maxWidth: 220 }} />;
-    case 'date': return <input type="date" value={v} min={f.disablePast ? today() : f.minDate || undefined} max={f.maxDate || undefined} onChange={(e) => onChange(e.target.value)} style={{ maxWidth: 220 }} />;
-    case 'time': return <input type="time" value={v} onChange={(e) => onChange(e.target.value)} style={{ maxWidth: 160 }} />;
+    case 'text': return <input {...ax} value={v} placeholder={f.placeholder} maxLength={f.maxLength || undefined} onChange={(e) => onChange(e.target.value)} />;
+    case 'textarea': return <textarea {...ax} rows={f.rows || 4} value={v} placeholder={f.placeholder} maxLength={f.maxLength || undefined} onChange={(e) => onChange(e.target.value)} />;
+    case 'email': return <input {...ax} type="email" value={v} placeholder={f.placeholder} onChange={(e) => onChange(e.target.value)} />;
+    case 'phone': return <input {...ax} type="tel" value={v} placeholder={f.placeholder} onChange={(e) => onChange(e.target.value)} />;
+    case 'url': return <input {...ax} type="url" value={v} placeholder={f.placeholder} onChange={(e) => onChange(e.target.value)} />;
+    case 'number': return <input {...ax} type="number" value={v} min={f.min} max={f.max} step={f.step || 'any'} placeholder={f.placeholder} onChange={(e) => onChange(e.target.value)} style={{ maxWidth: 220 }} />;
+    case 'date': return <input {...ax} type="date" value={v} min={f.disablePast ? today() : f.minDate || undefined} max={f.maxDate || undefined} onChange={(e) => onChange(e.target.value)} style={{ maxWidth: 220 }} />;
+    case 'time': return <input {...ax} type="time" value={v} onChange={(e) => onChange(e.target.value)} style={{ maxWidth: 160 }} />;
     case 'fullname':
       return (
         <div className="row wrap">
-          {f.prefix && <input style={{ maxWidth: 80 }} placeholder="Prefix" value={obj.prefix || ''} onChange={sub('prefix')} />}
-          <input className="grow" placeholder="First Name" value={obj.first || ''} onChange={sub('first')} />
-          {f.middle && <input className="grow" placeholder="Middle" value={obj.middle || ''} onChange={sub('middle')} />}
-          <input className="grow" placeholder="Last Name" value={obj.last || ''} onChange={sub('last')} />
+          {f.prefix && <input style={{ maxWidth: 80 }} placeholder="Prefix" aria-label="Prefix" value={obj.prefix || ''} onChange={sub('prefix')} />}
+          <input className="grow" placeholder="First Name" aria-label="First Name" value={obj.first || ''} onChange={sub('first')} />
+          {f.middle && <input className="grow" placeholder="Middle" aria-label="Middle" value={obj.middle || ''} onChange={sub('middle')} />}
+          <input className="grow" placeholder="Last Name" aria-label="Last Name" value={obj.last || ''} onChange={sub('last')} />
         </div>
       );
     case 'address':
       return (
         <div className="stack">
-          <input placeholder="Street Address" value={obj.street || ''} onChange={sub('street')} />
-          <input placeholder="Street Address Line 2" value={obj.street2 || ''} onChange={sub('street2')} />
+          <input placeholder="Street Address" aria-label="Street Address" value={obj.street || ''} onChange={sub('street')} />
+          <input placeholder="Street Address Line 2" aria-label="Street Address Line 2" value={obj.street2 || ''} onChange={sub('street2')} />
           <div className="grid2">
-            <input placeholder="City" value={obj.city || ''} onChange={sub('city')} />
-            <input placeholder="State / Province" value={obj.state || ''} onChange={sub('state')} />
-            <input placeholder="Postal / Zip Code" value={obj.zip || ''} onChange={sub('zip')} />
-            <input placeholder="Country" value={obj.country || ''} onChange={sub('country')} />
+            <input placeholder="City" aria-label="City" value={obj.city || ''} onChange={sub('city')} />
+            <input placeholder="State / Province" aria-label="State / Province" value={obj.state || ''} onChange={sub('state')} />
+            <input placeholder="Postal / Zip Code" aria-label="Postal / Zip Code" value={obj.zip || ''} onChange={sub('zip')} />
+            <input placeholder="Country" aria-label="Country" value={obj.country || ''} onChange={sub('country')} />
           </div>
         </div>
       );
     case 'dropdown':
       return (
-        <select value={v} onChange={(e) => onChange(e.target.value)}>
+        <select {...ax} value={v} onChange={(e) => onChange(e.target.value)}>
           <option value="">{f.placeholder || 'Please Select'}</option>
           {(f.options || []).map((o) => <option key={o} value={o}>{L(f, o)}</option>)}
         </select>

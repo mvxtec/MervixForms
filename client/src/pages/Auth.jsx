@@ -50,7 +50,10 @@ export default function Auth({ mode = 'login', error: initialError = '', onDone 
         {signup && (<><label className="lbl" htmlFor="au-name">Name</label><input id="au-name" value={form.name} onChange={set('name')} autoComplete="name" /></>)}
         <label className="lbl" htmlFor="au-email">E-mail</label>
         <input id="au-email" type="email" value={form.email} onChange={set('email')} required autoFocus autoComplete="email" />
-        <label className="lbl" htmlFor="au-pass">Password</label>
+        <div className="row" style={{ justifyContent: 'space-between' }}>
+          <label className="lbl" htmlFor="au-pass">Password</label>
+          {!signup && <a className="link hint" href="#/forgot" style={{ marginTop: 8 }}>Forgot password?</a>}
+        </div>
         <input id="au-pass" type="password" value={form.password} onChange={set('password')} required minLength={signup ? 8 : undefined} autoComplete={signup ? 'new-password' : 'current-password'} />
         {signup && <p className="hint" style={{ margin: '6px 0 0' }}>At least 8 characters.</p>}
         {error && <p className="error" role="alert">{error}</p>}
@@ -58,6 +61,69 @@ export default function Auth({ mode = 'login', error: initialError = '', onDone 
         <p className="hint" style={{ marginTop: 16, textAlign: 'center' }}>
           {signup ? <>Already have an account? <a className="link" href="#/login">Log in</a></> : <>No account yet? <a className="link" href="#/signup">Sign up</a></>}
         </p>
+      </form>
+    </div>
+  );
+}
+
+// "Forgot password?": asks for the e-mail and always gives the same answer, so it doesn't reveal accounts.
+export function ForgotPassword() {
+  const [email, setEmail] = useState('');
+  const [state, setState] = useState({});
+  const submit = async (e) => {
+    e.preventDefault();
+    setState({ busy: true });
+    try { await api('/auth/forgot', { method: 'POST', body: { email } }); setState({ sent: true }); } catch (x) { setState({ error: x.message }); }
+  };
+  return (
+    <div className="auth-page">
+      <Logo />
+      <form className="auth-card" onSubmit={submit}>
+        <h1>Reset your password</h1>
+        {state.sent ? (
+          <p className="muted" role="status">If an account uses {email}, we've sent it a link to choose a new password. The link works for 1 hour.</p>
+        ) : (
+          <>
+            <p className="muted" style={{ marginTop: -4 }}>Enter the e-mail you sign in with and we'll send you a reset link.</p>
+            <label className="lbl" htmlFor="fp-email">E-mail</label>
+            <input id="fp-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus autoComplete="email" />
+            {state.error && <p className="error" role="alert">{state.error}</p>}
+            <button className="primary" style={{ width: '100%', minHeight: 40, marginTop: 18 }} disabled={state.busy}>{state.busy ? 'Sending…' : 'Send reset link'}</button>
+          </>
+        )}
+        <p className="hint" style={{ marginTop: 16, textAlign: 'center' }}><a className="link" href="#/login">Back to log in</a></p>
+      </form>
+    </div>
+  );
+}
+
+export function ResetPassword({ token }) {
+  const [password, setPassword] = useState('');
+  const [state, setState] = useState({});
+  const submit = async (e) => {
+    e.preventDefault();
+    setState({ busy: true });
+    try { await api('/auth/reset', { method: 'POST', body: { token, password } }); setState({ done: true }); } catch (x) { setState({ error: x.message }); }
+  };
+  return (
+    <div className="auth-page">
+      <Logo />
+      <form className="auth-card" onSubmit={submit}>
+        <h1>Choose a new password</h1>
+        {state.done ? (
+          <>
+            <p className="muted" role="status">Your password is changed and you're signed out everywhere else.</p>
+            <a className="btn primary" style={{ width: '100%', marginTop: 12 }} href="#/login">Log in</a>
+          </>
+        ) : (
+          <>
+            <label className="lbl" htmlFor="rp-pass">New password</label>
+            <input id="rp-pass" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} autoFocus autoComplete="new-password" />
+            <p className="hint" style={{ margin: '6px 0 0' }}>At least 8 characters.</p>
+            {state.error && <p className="error" role="alert">{state.error}</p>}
+            <button className="primary" style={{ width: '100%', minHeight: 40, marginTop: 18 }} disabled={state.busy}>{state.busy ? 'Saving…' : 'Save new password'}</button>
+          </>
+        )}
       </form>
     </div>
   );

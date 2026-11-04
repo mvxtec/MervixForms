@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { api } from './api.js';
 import { useHashRoute, match, navigate, query, takePending, setPending } from './router.js';
-import Auth from './pages/Auth.jsx';
+import Auth, { ForgotPassword, ResetPassword } from './pages/Auth.jsx';
 import Home from './pages/Home.jsx';
 import Site, { SITE_PAGES } from './pages/Site.jsx';
 import FormWorkspace from './pages/FormWorkspace.jsx';
@@ -73,6 +73,9 @@ export default function App() {
   if (track) return <Track token={track.token} />;
 
   if (me === undefined) return <div className="page muted">Loading…</div>;
+  if (page === '/forgot') return <ForgotPassword />;
+  const reset = match('/reset/:token', route);
+  if (reset) return <ResetPassword token={reset.token} />;
   const verify = match('/verify/:token', route);
   if (verify) return <VerifyEmail token={verify.token} signedIn={!!me} onDone={refresh} />;
   if (!me) {

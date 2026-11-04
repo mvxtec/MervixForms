@@ -10,6 +10,7 @@ import { WEBHOOK_KEYS } from '../shared/integrations.js';
 import { startWorkflows } from './workflows.js';
 import { submissionPdf } from './pdf.js';
 import { hmac } from './secrets.js';
+import { safeFetch } from './net.js';
 
 export const BASE_URL = () => process.env.BASE_URL || `http://localhost:${process.env.PORT || 4000}`;
 export const emailEnabled = () => !!process.env.SMTP_HOST;
@@ -127,7 +128,7 @@ export async function sendSms(owner, form, to, body) {
 
 export async function postJson(form, url, payload) {
   try {
-    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), signal: AbortSignal.timeout(8000) });
+    const r = await safeFetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     db.prepare('INSERT INTO webhook_log (form_id, url, status) VALUES (?, ?, ?)').run(form.id, url, r.status);
   } catch (e) {
     db.prepare('INSERT INTO webhook_log (form_id, url, error) VALUES (?, ?, ?)').run(form.id, url, String(e.message || e));
@@ -166,7 +167,7 @@ export async function afterSubmit(form, owner, sub) {
   }
 
   const event = { event: 'submission.created', formId: form.id, formTitle: form.title, submissionId: sub.id, createdAt: sub.created_at, data, payment: sub.payment };
-  for (const url of s.webhooks || []) if (/^https?:\/\//.test(url)) await postJson(form, url, event);
+  for (const url of s.webhooks || []) await postJson(form, url, event); // safeFetch enforces https and public hosts
 
   const integ = s.integrations || {};
   // Automation platforms (Zapier, Make, n8n…) receive the same JSON event as plain webhooks.
@@ -189,7 +190,6 @@ export async function afterSubmit(form, owner, sub) {
 
 // Settings → Integrations → "Send test": posts a sample submission in the service's format and reports the HTTP status.
 export async function testIntegration(form, kind, url) {
-  if (!/^https:\/\//.test(url || '')) return { ok: false, error: 'Use an https:// URL.' };
   const data = {};
   for (const f of form.definition.fields.filter(isInput)) data[f.id] = `[${f.label}]`;
   const summary = form.definition.fields.filter(isInput).slice(0, 8).map((f) => `${f.label}: [${f.label}]`).join('\n');
@@ -200,7 +200,7 @@ export async function testIntegration(form, kind, url) {
     sheets: { sheet: form.title, row: { 'Submission ID': 'test', ...Object.fromEntries(Object.entries(data).slice(0, 20)) } },
   }[kind] || { event: 'submission.created', test: true, formId: form.id, formTitle: form.title, submissionId: 0, createdAt: new Date().toISOString(), data, payment: null };
   try {
-    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), signal: AbortSignal.timeout(8000) });
+    const r = await safeFetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     return { ok: r.ok, status: r.status };
   } catch (e) { return { ok: false, error: String(e.message || e) }; }
 }

@@ -1,6 +1,7 @@
 // PDF generation with pdf-lib: designed submission documents and stamping e-sign documents.
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { formatValue, isInput, isEmpty } from '../shared/fields.js';
+import { safeFetch } from './net.js';
 
 // Standard fonts only cover WinAnsi; replace anything else so drawing never throws.
 const MAP = { '★': '*', '✓': 'v', '✗': 'x', '—': '-', '–': '-', '…': '...', '“': '"', '”': '"', '‘': "'", '’': "'", '•': '-', '→': '->' };
@@ -44,8 +45,8 @@ async function embedImage(pdf, src) {
       png = src.startsWith('data:image/png');
       bytes = Buffer.from(src.split(',')[1], 'base64');
     } else if (/^https?:\/\//.test(src)) {
-      const r = await fetch(src, { signal: AbortSignal.timeout(5000) });
-      if (!r.ok) return null;
+      const r = await safeFetch(src, { allowHttp: true, timeoutMs: 5000, maxBytes: 10 * 1024 * 1024 }).catch(() => null);
+      if (!r?.ok) return null;
       bytes = Buffer.from(await r.arrayBuffer());
       png = (r.headers.get('content-type') || '').includes('png') || src.toLowerCase().endsWith('.png');
     } else return null;

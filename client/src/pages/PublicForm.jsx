@@ -18,9 +18,9 @@ export default function PublicForm({ formId, embed }) {
 
   const load = (pw) => {
     const q = new URLSearchParams();
-    if (pw) q.set('password', pw);
     if (params.get('preview')) q.set('preview', '1');
-    api(`/public/forms/${formId}?${q}`).then((d) => { setData(d); document.title = d.title; }).catch((e) => setError(e.message));
+    // The password goes in a header so it never appears in URLs, logs or browser history.
+    api(`/public/forms/${formId}?${q}`, { headers: pw ? { 'X-Form-Password': pw } : undefined }).then((d) => { setData(d); document.title = d.title; }).catch((e) => setError(e.message));
   };
 
   useEffect(() => {

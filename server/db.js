@@ -232,7 +232,7 @@ export function getUsage(userId) {
   const row = db.prepare('SELECT * FROM usage WHERE user_id = ? AND month = ?').get(userId, month()) || {};
   const forms = db.prepare("SELECT COUNT(*) n FROM forms WHERE user_id = ? AND status != 'trashed'").get(userId).n;
   const total = db.prepare('SELECT COUNT(*) n FROM submissions s JOIN forms f ON f.id = s.form_id WHERE f.user_id = ?').get(userId).n;
-  const bytes = db.prepare('SELECT COALESCE(SUM(size), 0) n FROM uploads WHERE user_id = ?').get(userId).n;
+  const bytes = db.prepare('SELECT COALESCE(SUM(size), 0) n FROM uploads WHERE user_id = ? AND pending = 0').get(userId).n;
   return {
     forms, totalSubmissions: total, uploadBytes: bytes,
     submissionsPerMonth: row.submissions || 0, viewsPerMonth: row.views || 0,
@@ -254,3 +254,15 @@ db.exec(`CREATE TABLE IF NOT EXISTS form_counters (form_id TEXT NOT NULL, field_
 // E-mail verification. The operator account from .env is trusted; everyone else confirms by link.
 addColumn('users', 'email_verified_at', 'email_verified_at TEXT');
 if (process.env.ADMIN_EMAIL) db.prepare("UPDATE users SET email_verified_at = COALESCE(email_verified_at, datetime('now')) WHERE email = ?").run(process.env.ADMIN_EMAIL.trim().toLowerCase());
+
+// Server-side sessions (the cookie holds a random id; only its SHA-256 is stored).
+db.exec(`CREATE TABLE IF NOT EXISTS sessions (
+  id_hash TEXT PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  expires_at INTEGER NOT NULL
+)`);
+db.exec('CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id)');
+
+// Public uploads stay "pending" until a submission uses them; only attached files count against storage.
+addColumn('uploads', 'pending', 'pending INTEGER NOT NULL DEFAULT 0');
